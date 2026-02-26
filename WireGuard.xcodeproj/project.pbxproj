@@ -1306,6 +1306,8 @@
 				5892BFA025558288000E678D /* PacketTunnelProvider.swift in Sources */,
 				585B108B2577E294004F691E /* Endpoint.swift in Sources */,
 				585B10732577E294004F691E /* Array+ConcurrentMap.swift in Sources */,
+				BB3D4E01293FA00000000002 /* FailoverSettings.swift in Sources */,
+				BB3D4E01293FA00000000006 /* ConnectionHealthMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1390,6 +1392,10 @@
 				585B10942577E294004F691E /* key.c in Sources */,
 				585B10682577E294004F691E /* TunnelConfiguration.swift in Sources */,
 				6FB1BD6021D2607A00A991BF /* AppDelegate.swift in Sources */,
+				BB3D4E01293FA00000000003 /* FailoverSettings.swift in Sources */,
+				BB3D4E01293FA00000000007 /* ConnectionHealthMonitor.swift in Sources */,
+				BB3D4E01293FA0000000000A /* FailoverGroup.swift in Sources */,
+				BB3D4E01293FA0000000000C /* TunnelsManager+Failover.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1420,6 +1426,8 @@
 				6FB1BDAF21D4F53300A991BF /* FileManager+Extension.swift in Sources */,
 				585B108D2577E294004F691E /* Endpoint.swift in Sources */,
 				585B10752577E294004F691E /* Array+ConcurrentMap.swift in Sources */,
+				BB3D4E01293FA00000000004 /* FailoverSettings.swift in Sources */,
+				BB3D4E01293FA00000000008 /* ConnectionHealthMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
