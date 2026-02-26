@@ -1,0 +1,114 @@
+# CLAUDE.md - WireGuard for iOS and macOS
+
+## Project Overview
+
+Official WireGuard VPN client for iOS and macOS. Provides a full GUI application, a reusable `WireGuardKit` Swift Package library, and a Network Extension for system-level VPN integration. Built on top of `wireguard-go` (Go backend) bridged via C interop.
+
+## Repository Structure
+
+```
+Sources/
+  WireGuardKit/           # Core library (SPM target) - tunnel config, adapter, DNS, crypto types
+  WireGuardKitGo/         # Go bridge to wireguard-go backend (api-apple.go, Makefile)
+  WireGuardKitC/          # C crypto primitives (Curve25519 key derivation)
+  WireGuardNetworkExtension/  # NEPacketTunnelProvider implementation
+  WireGuardApp/           # App targets (iOS + macOS)
+    Tunnel/               # Tunnel lifecycle: TunnelsManager, TunnelStatus, on-demand rules
+    Config/               # Xcode build config (Version.xcconfig, Developer.xcconfig)
+    UI/iOS/               # iOS-specific UI (UIKit view controllers)
+    UI/macOS/             # macOS-specific UI (AppKit view controllers)
+    ZipArchive/           # ZIP import/export for tunnel configs
+  Shared/                 # Cross-target utilities (Keychain, Logger, FileManager extensions)
+WireGuard.xcodeproj       # Xcode project (primary build system)
+Package.swift             # SPM manifest for WireGuardKit library consumers
+```
+
+## Build Instructions
+
+### Prerequisites
+- Xcode (latest stable)
+- Go 1.19+ (`brew install go`)
+- SwiftLint (`brew install swiftlint`)
+
+### Setup
+```bash
+cp Sources/WireGuardApp/Config/Developer.xcconfig.template Sources/WireGuardApp/Config/Developer.xcconfig
+# Edit Developer.xcconfig: set DEVELOPMENT_TEAM, APP_ID_IOS, APP_ID_MACOS
+open WireGuard.xcodeproj
+```
+
+### Platform Targets
+- **iOS**: minimum iOS 15
+- **macOS**: minimum macOS 12
+- Toggle platform by selecting target in Xcode
+
+### WireGuardKit as SPM Dependency
+When consuming WireGuardKit in another project, you must manually create an external build system target for `WireGuardGoBridge<Platform>` (see README.md for details). SPM cannot build the Go bridge automatically.
+
+## Architecture
+
+### Key Components
+
+**WireGuardAdapter** (`Sources/WireGuardKit/WireGuardAdapter.swift`):
+Central bridge between NetworkExtension and wireguard-go. Manages tunnel lifecycle with three states: `.stopped`, `.started(handle, settingsGenerator)`, `.temporaryShutdown(settingsGenerator)`. Monitors network changes via `NWPathMonitor`. On iOS, handles offline/online transitions by shutting down and restarting the Go backend. On macOS, bumps sockets on network changes.
+
+**PacketTunnelProvider** (`Sources/WireGuardNetworkExtension/PacketTunnelProvider.swift`):
+`NEPacketTunnelProvider` subclass. Entry point for the Network Extension process. Delegates to `WireGuardAdapter` for start/stop/message handling.
+
+**TunnelsManager** (`Sources/WireGuardApp/Tunnel/TunnelsManager.swift`):
+App-level orchestrator. Manages list of `TunnelContainer` objects backed by `NETunnelProviderManager`. Enforces single-active-tunnel constraint (one tunnel active at a time; others queue as `.waiting`). Handles activation retry (up to 8 attempts), on-demand rule management, and tunnel config persistence via system preferences + Keychain.
+
+**TunnelContainer** (`Sources/WireGuardApp/Tunnel/TunnelsManager.swift:566`):
+Wraps `NETunnelProviderManager` with observable `status` and `name` properties. Manages activation lifecycle including retry logic for `configurationInvalid`/`configurationStale` errors.
+
+### Tunnel Lifecycle
+1. `TunnelsManager.startActivation(of:)` - queues if another tunnel active
+2. `TunnelContainer.startActivation()` - calls `NETunnelProviderSession.startTunnel()`
+3. `PacketTunnelProvider.startTunnel()` - instantiates `WireGuardAdapter`
+4. `WireGuardAdapter.start()` - resolves DNS, sets network settings, calls `wgTurnOn()`
+5. Network changes: iOS pauses/resumes backend; macOS bumps sockets
+
+### Data Model
+- `TunnelConfiguration` = name + `InterfaceConfiguration` + `[PeerConfiguration]`
+- `InterfaceConfiguration` = privateKey, addresses, listenPort, mtu, dns, dnsSearch
+- `PeerConfiguration` = publicKey, preSharedKey, endpoint, allowedIPs, persistentKeepAlive
+- Configs stored as wg-quick format strings in system Keychain
+
+### Platform Differences
+- iOS: `NWPathMonitor` triggers temporary shutdown when offline, restart when online; `wgDisableSomeRoamingForBrokenMobileSemantics` called; MTU defaults to 1280
+- macOS: Socket bumping on network change; `exit(0)` hack on tunnel stop (Apple bug workaround); MTU uses `tunnelOverheadBytes = 80`
+
+## Code Conventions
+
+### Swift Style
+- SwiftLint enforced (`.swiftlint.yml` at root)
+- Disabled rules: line_length, trailing_whitespace, todo, cyclomatic_complexity, file_length, type_body_length, function_body_length, nesting, inclusive_language
+- Enabled opt-in rules: empty_count, empty_string, implicitly_unwrapped_optional, legacy_random, let_var_whitespace, literal_expression_end_indentation, override_in_extension, redundant_type_annotation, toggle_bool, unneeded_parentheses_in_closure_argument, unused_import, trailing_closure
+- Identifier minimum length: 0 (no restriction)
+
+### Patterns
+- Platform-conditional compilation via `#if os(iOS)` / `#if os(macOS)` / `#if targetEnvironment(simulator)`
+- `DispatchQueue` for concurrency (no async/await; the codebase predates widespread adoption)
+- Completion handler pattern throughout (not Combine or async/await)
+- `wg_log()` global logging function (wraps os_log + ring buffer file logger)
+- Localization via `tr()` function and `.lproj` directories
+- Errors use `WireGuardAppError` protocol with `alertText: (title, message)` pattern
+
+### Naming
+- Tunnel providers: `NETunnelProviderManager` (system), `TunnelContainer` (app wrapper)
+- Go bridge functions: `wgTurnOn`, `wgTurnOff`, `wgSetConfig`, `wgGetConfig`, `wgBumpSockets`
+- UAPI config: key=value newline-delimited format for communicating with wireguard-go
+
+## Testing
+
+- Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)
+- Network Extension features require a real device with proper provisioning
+- No automated test suite in the repository
+
+## Important Notes
+
+- Only one VPN tunnel can be active at a time (iOS/macOS system constraint enforced by `TunnelsManager`)
+- Tunnel configs are stored in the system Keychain, not in app-local storage
+- The Network Extension runs as a separate process from the main app
+- IPC between app and extension uses `NETunnelProviderSession.sendProviderMessage()`
+- On iOS, adding a new tunnel config can cause the system to deactivate the current tunnel (worked around with reactivation hack in `TunnelsManager.add()`)
