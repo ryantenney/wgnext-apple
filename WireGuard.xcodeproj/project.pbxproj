@@ -504,9 +504,11 @@
 			isa = PBXGroup;
 			children = (
 				585B104C2577E293004F691E /* Array+ConcurrentMap.swift */,
+				AA1B2C01293FA00000000002 /* ConnectionHealthMonitor.swift */,
 				585B104D2577E293004F691E /* DNSResolver.swift */,
 				585B10482577E293004F691E /* DNSServer.swift */,
 				585B10522577E293004F691E /* Endpoint.swift */,
+				AA1B2C01293FA00000000001 /* FailoverSettings.swift */,
 				585B10462577E293004F691E /* InterfaceConfiguration.swift */,
 				585B104E2577E293004F691E /* IPAddress+AddrInfo.swift */,
 				585B10512577E293004F691E /* IPAddressRange.swift */,
@@ -546,6 +548,7 @@
 				6F8F0D7322267AD2000E8335 /* ChevronCell.swift */,
 				6F0F44C8222D55BB00B0FF04 /* TextCell.swift */,
 				6F0F44CA222D55FD00B0FF04 /* EditableTextCell.swift */,
+				AA1B2C01293FA00000000005 /* FailoverGroupCell.swift */,
 			);
 			path = View;
 			sourceTree = "<group>";
@@ -562,6 +565,7 @@
 				6F8F0D7622267C57000E8335 /* SSIDOptionEditTableViewController.swift */,
 				6F9B8A8D223398610041B9C4 /* SSIDOptionDetailTableViewController.swift */,
 				6FDB6D16224CC04E00EE4BC3 /* LogViewController.swift */,
+				AA1B2C01293FA00000000006 /* FailoverGroupEditTableViewController.swift */,
 			);
 			path = ViewController;
 			sourceTree = "<group>";
@@ -671,9 +675,11 @@
 				6F7774EE21722D97006A79B3 /* TunnelsManager.swift */,
 				6B707D8321F918D4000A8F73 /* TunnelConfiguration+UapiConfig.swift */,
 				6FFA5DA32197085D0001E2F7 /* ActivateOnDemandOption.swift */,
+				AA1B2C01293FA00000000003 /* FailoverGroup.swift */,
 				5F4541A821C451D100994C13 /* TunnelStatus.swift */,
 				6FB1017821C57DE600766195 /* MockTunnels.swift */,
 				6F7F7E5E21C7D74B00527607 /* TunnelErrors.swift */,
+				AA1B2C01293FA00000000004 /* TunnelsManager+Failover.swift */,
 			);
 			path = Tunnel;
 			sourceTree = "<group>";
