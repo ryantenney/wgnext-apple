@@ -13,6 +13,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }()
 
+    /// All tunnel configurations for failover (index 0 = primary). Empty if failover is not configured.
+    private var failoverConfigs: [TunnelConfiguration] = []
+
+    /// Names corresponding to failoverConfigs, for display/logging.
+    private var failoverConfigNames: [String] = []
+
+    /// Index of the currently active configuration within failoverConfigs.
+    private var activeConfigIndex: Int = 0
+
     override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         let activationAttemptId = options?["activationAttemptId"] as? String
         let errorNotifier = ErrorNotifier(activationAttemptId: activationAttemptId)
@@ -21,11 +30,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         wg_log(.info, message: "Starting tunnel from the " + (activationAttemptId == nil ? "OS directly, rather than the app" : "app"))
 
-        guard let tunnelProviderProtocol = self.protocolConfiguration as? NETunnelProviderProtocol,
-              let tunnelConfiguration = tunnelProviderProtocol.asTunnelConfiguration() else {
+        guard let tunnelProviderProtocol = self.protocolConfiguration as? NETunnelProviderProtocol else {
             errorNotifier.notify(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
             completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
             return
+        }
+
+        // Load failover configurations from providerConfiguration, if present
+        let providerConfig = tunnelProviderProtocol.providerConfiguration
+        loadFailoverConfigs(from: providerConfig)
+
+        // Determine the primary tunnel configuration
+        let tunnelConfiguration: TunnelConfiguration
+        if let primary = failoverConfigs.first {
+            tunnelConfiguration = primary
+            wg_log(.info, message: "Failover: loaded \(failoverConfigs.count) configs [\(failoverConfigNames.joined(separator: ", "))]")
+        } else {
+            guard let config = tunnelProviderProtocol.asTunnelConfiguration() else {
+                errorNotifier.notify(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
+                completionHandler(PacketTunnelProviderError.savedProtocolConfigurationIsInvalid)
+                return
+            }
+            tunnelConfiguration = config
         }
 
         // Start the tunnel
@@ -34,6 +60,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 let interfaceName = self.adapter.interfaceName ?? "unknown"
 
                 wg_log(.info, message: "Tunnel interface is \(interfaceName)")
+
+                // Start health monitor if failover is configured
+                self.startHealthMonitorIfNeeded(providerConfig: providerConfig)
 
                 completionHandler(nil)
                 return
@@ -72,6 +101,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
         wg_log(.info, staticMessage: "Stopping tunnel")
 
+        adapter.healthMonitor?.stop()
+        adapter.healthMonitor = nil
+
         adapter.stop { error in
             ErrorNotifier.removeLastErrorFile()
 
@@ -93,6 +125,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         guard let completionHandler = completionHandler else { return }
 
         if messageData.count == 1 && messageData[0] == 0 {
+            // Existing: get runtime configuration
             adapter.getRuntimeConfiguration { settings in
                 var data: Data?
                 if let settings = settings {
@@ -100,9 +133,81 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 completionHandler(data)
             }
+        } else if messageData.count == 1 && messageData[0] == 1 {
+            // Failover: get current failover state
+            let state: [String: Any] = [
+                "activeIndex": activeConfigIndex,
+                "activeConfig": failoverConfigNames.indices.contains(activeConfigIndex) ? failoverConfigNames[activeConfigIndex] : "unknown",
+                "totalConfigs": failoverConfigs.count,
+                "configNames": failoverConfigNames,
+                "isFailoverActive": failoverConfigs.count > 1
+            ]
+            completionHandler(try? JSONSerialization.data(withJSONObject: state))
         } else {
             completionHandler(nil)
         }
+    }
+
+    // MARK: - Failover Setup
+
+    private func loadFailoverConfigs(from providerConfig: [String: Any]?) {
+        guard let configStrings = providerConfig?["FailoverConfigs"] as? [String] else { return }
+
+        let names = providerConfig?["FailoverConfigNames"] as? [String] ?? []
+        failoverConfigNames = names
+
+        failoverConfigs = configStrings.enumerated().compactMap { index, configString in
+            let name = names.indices.contains(index) ? names[index] : nil
+            do {
+                return try TunnelConfiguration(fromWgQuickConfig: configString, called: name)
+            } catch {
+                wg_log(.error, message: "Failover: failed to parse config #\(index) '\(name ?? "unknown")': \(error)")
+                return nil
+            }
+        }
+    }
+
+    private func startHealthMonitorIfNeeded(providerConfig: [String: Any]?) {
+        guard failoverConfigs.count > 1 else { return }
+
+        var settings = FailoverSettings()
+        if let settingsData = providerConfig?["FailoverSettings"] as? Data {
+            if let decoded = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
+                settings = decoded
+            }
+        }
+
+        let monitor = ConnectionHealthMonitor(
+            adapter: adapter,
+            configurations: failoverConfigs,
+            settings: settings
+        ) { logLevel, message in
+            wg_log(logLevel.osLogLevel, message: message)
+        }
+        monitor.delegate = self
+        adapter.healthMonitor = monitor
+        monitor.start()
+    }
+}
+
+// MARK: - ConnectionHealthMonitorDelegate
+
+extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didSwitchToConfigAt index: Int) {
+        activeConfigIndex = index
+        let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
+        wg_log(.info, message: "Failover: now active on '\(name)'")
+    }
+
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectUnhealthyConnectionAt index: Int, handshakeAge: TimeInterval) {
+        let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
+        wg_log(.info, message: "Failover: '\(name)' unhealthy (no handshake for \(Int(handshakeAge))s)")
+    }
+
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int) {
+        activeConfigIndex = index
+        let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
+        wg_log(.info, message: "Failover: successfully failed back to '\(name)'")
     }
 }
 

@@ -56,6 +56,9 @@ public class WireGuardAdapter {
     /// Adapter state.
     private var state: State = .stopped
 
+    /// Connection health monitor for failover between tunnel configurations.
+    public var healthMonitor: ConnectionHealthMonitor?
+
     /// Tunnel device file descriptor.
     private var tunnelFileDescriptor: Int32? {
         var ctlInfo = ctl_info()
@@ -415,6 +418,9 @@ public class WireGuardAdapter {
     /// - Parameter path: new network path
     private func didReceivePathUpdate(path: Network.NWPath) {
         self.logHandler(.verbose, "Network change detected with \(path.status) route and interface order \(path.availableInterfaces)")
+
+        // Notify health monitor of network changes (may trigger failback probe)
+        self.healthMonitor?.networkPathDidChange()
 
         #if os(macOS)
         if case .started(let handle, _) = self.state {

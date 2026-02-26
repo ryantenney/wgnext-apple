@@ -205,6 +205,20 @@
 		6FFA5DA021958ECC0001E2F7 /* ErrorNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFA5D9F21958ECC0001E2F7 /* ErrorNotifier.swift */; };
 		6FFA5DA42197085D0001E2F7 /* ActivateOnDemandOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFA5DA32197085D0001E2F7 /* ActivateOnDemandOption.swift */; };
 		6FFACD2021E4D8D500E9A2A5 /* ParseError+WireGuardAppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFACD1E21E4D89600E9A2A5 /* ParseError+WireGuardAppError.swift */; };
+		BB3D4E01293FA00000000001 /* FailoverSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000001 /* FailoverSettings.swift */; };
+		BB3D4E01293FA00000000002 /* FailoverSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000001 /* FailoverSettings.swift */; };
+		BB3D4E01293FA00000000003 /* FailoverSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000001 /* FailoverSettings.swift */; };
+		BB3D4E01293FA00000000004 /* FailoverSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000001 /* FailoverSettings.swift */; };
+		BB3D4E01293FA00000000005 /* ConnectionHealthMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000002 /* ConnectionHealthMonitor.swift */; };
+		BB3D4E01293FA00000000006 /* ConnectionHealthMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000002 /* ConnectionHealthMonitor.swift */; };
+		BB3D4E01293FA00000000007 /* ConnectionHealthMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000002 /* ConnectionHealthMonitor.swift */; };
+		BB3D4E01293FA00000000008 /* ConnectionHealthMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000002 /* ConnectionHealthMonitor.swift */; };
+		BB3D4E01293FA00000000009 /* FailoverGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000003 /* FailoverGroup.swift */; };
+		BB3D4E01293FA0000000000A /* FailoverGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000003 /* FailoverGroup.swift */; };
+		BB3D4E01293FA0000000000B /* TunnelsManager+Failover.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000004 /* TunnelsManager+Failover.swift */; };
+		BB3D4E01293FA0000000000C /* TunnelsManager+Failover.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000004 /* TunnelsManager+Failover.swift */; };
+		BB3D4E01293FA0000000000D /* FailoverGroupCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000005 /* FailoverGroupCell.swift */; };
+		BB3D4E01293FA0000000000E /* FailoverGroupEditTableViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000006 /* FailoverGroupEditTableViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -440,6 +454,12 @@
 		6FFA5D9F21958ECC0001E2F7 /* ErrorNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorNotifier.swift; sourceTree = "<group>"; };
 		6FFA5DA32197085D0001E2F7 /* ActivateOnDemandOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivateOnDemandOption.swift; sourceTree = "<group>"; };
 		6FFACD1E21E4D89600E9A2A5 /* ParseError+WireGuardAppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ParseError+WireGuardAppError.swift"; sourceTree = "<group>"; };
+		AA1B2C01293FA00000000001 /* FailoverSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverSettings.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA00000000002 /* ConnectionHealthMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionHealthMonitor.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA00000000003 /* FailoverGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroup.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA00000000004 /* TunnelsManager+Failover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TunnelsManager+Failover.swift"; sourceTree = "<group>"; };
+		AA1B2C01293FA00000000005 /* FailoverGroupCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupCell.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA00000000006 /* FailoverGroupEditTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupEditTableViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */

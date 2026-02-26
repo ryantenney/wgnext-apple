@@ -1,0 +1,427 @@
+// SPDX-License-Identifier: MIT
+// Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
+
+import UIKit
+
+protocol FailoverGroupEditDelegate: AnyObject {
+    func failoverGroupSaved(_ group: FailoverGroup)
+    func failoverGroupDeleted(_ group: FailoverGroup)
+}
+
+class FailoverGroupEditTableViewController: UITableViewController {
+
+    weak var delegate: FailoverGroupEditDelegate?
+
+    private let tunnelsManager: TunnelsManager
+    private var group: FailoverGroup?
+    private var isNewGroup: Bool
+
+    // Editable state
+    private var groupName: String
+    private var selectedTunnelNames: [String]
+    private var handshakeTimeout: TimeInterval
+    private var healthCheckInterval: TimeInterval
+    private var failbackProbeInterval: TimeInterval
+    private var autoFailback: Bool
+
+    // All available tunnel names for selection
+    private var availableTunnelNames: [String]
+
+    private enum Section: Int, CaseIterable {
+        case name
+        case tunnels
+        case addTunnel
+        case settings
+        case delete
+    }
+
+    private enum SettingsRow: Int, CaseIterable {
+        case handshakeTimeout
+        case healthCheckInterval
+        case failbackProbeInterval
+        case autoFailback
+    }
+
+    init(tunnelsManager: TunnelsManager, group: FailoverGroup? = nil) {
+        self.tunnelsManager = tunnelsManager
+        self.group = group
+        self.isNewGroup = (group == nil)
+
+        self.groupName = group?.name ?? ""
+        self.selectedTunnelNames = group?.tunnelNames ?? []
+        self.handshakeTimeout = group?.settings.handshakeTimeout ?? 180
+        self.healthCheckInterval = group?.settings.healthCheckInterval ?? 30
+        self.failbackProbeInterval = group?.settings.failbackProbeInterval ?? 300
+        self.autoFailback = group?.settings.autoFailback ?? true
+
+        self.availableTunnelNames = tunnelsManager.mapTunnels { $0.name }
+
+        super.init(style: .grouped)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        title = isNewGroup ? "New Failover Group" : "Edit Failover Group"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(saveTapped))
+        navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
+
+        tableView.register(EditableTextCell.self)
+        tableView.register(CheckmarkCell.self)
+        tableView.register(SwitchCell.self)
+        tableView.register(KeyValueCell.self)
+        tableView.register(ButtonCell.self)
+        tableView.register(TextCell.self)
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 44
+    }
+
+    @objc private func saveTapped() {
+        let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            showError("Please enter a name for the failover group.")
+            return
+        }
+        guard selectedTunnelNames.count >= 2 else {
+            showError("A failover group needs at least 2 tunnels.")
+            return
+        }
+
+        // Check that all tunnels have PersistentKeepalive set
+        var tunnelsWithoutKeepalive: [String] = []
+        for name in selectedTunnelNames {
+            if let tunnel = tunnelsManager.tunnel(named: name),
+               let config = tunnel.tunnelConfiguration {
+                for peer in config.peers where peer.persistentKeepAlive == nil {
+                    tunnelsWithoutKeepalive.append(name)
+                    break
+                }
+            }
+        }
+
+        let doSave = { [weak self] in
+            guard let self = self else { return }
+            let settings = FailoverSettings(
+                handshakeTimeout: self.handshakeTimeout,
+                healthCheckInterval: self.healthCheckInterval,
+                failbackProbeInterval: self.failbackProbeInterval,
+                autoFailback: self.autoFailback
+            )
+
+            if var existingGroup = self.group {
+                existingGroup.name = trimmedName
+                existingGroup.tunnelNames = self.selectedTunnelNames
+                existingGroup.settings = settings
+                FailoverGroupManager.updateGroup(existingGroup)
+                self.delegate?.failoverGroupSaved(existingGroup)
+            } else {
+                let newGroup = FailoverGroup(
+                    name: trimmedName,
+                    tunnelNames: self.selectedTunnelNames,
+                    settings: settings
+                )
+                FailoverGroupManager.addGroup(newGroup)
+                self.delegate?.failoverGroupSaved(newGroup)
+            }
+            self.dismiss(animated: true)
+        }
+
+        if !tunnelsWithoutKeepalive.isEmpty {
+            let names = tunnelsWithoutKeepalive.joined(separator: ", ")
+            let alert = UIAlertController(
+                title: "PersistentKeepalive Not Set",
+                message: "Tunnels [\(names)] don't have PersistentKeepalive configured. Failover health detection requires it to work reliably. Save anyway?",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Save Anyway", style: .default) { _ in doSave() })
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            present(alert, animated: true)
+        } else {
+            doSave()
+        }
+    }
+
+    @objc private func cancelTapped() {
+        dismiss(animated: true)
+    }
+
+    private func showError(_ message: String) {
+        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    // MARK: - UITableViewDataSource
+
+    override func numberOfSections(in tableView: UITableView) -> Int {
+        var count = Section.allCases.count
+        if isNewGroup { count -= 1 } // No delete section for new groups
+        return count
+    }
+
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        guard let sectionType = Section(rawValue: section) else { return 0 }
+        switch sectionType {
+        case .name:
+            return 1
+        case .tunnels:
+            return selectedTunnelNames.count
+        case .addTunnel:
+            return 1
+        case .settings:
+            return SettingsRow.allCases.count
+        case .delete:
+            return 1
+        }
+    }
+
+    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        guard let sectionType = Section(rawValue: section) else { return nil }
+        switch sectionType {
+        case .name:
+            return "Name"
+        case .tunnels:
+            return "Connections (in priority order)"
+        case .addTunnel:
+            return nil
+        case .settings:
+            return "Failover Settings"
+        case .delete:
+            return nil
+        }
+    }
+
+    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        guard let sectionType = Section(rawValue: section) else { return nil }
+        switch sectionType {
+        case .tunnels:
+            return "First tunnel is primary. Drag to reorder priority."
+        case .settings:
+            return "PersistentKeepalive must be enabled on all tunnels for reliable health detection."
+        default:
+            return nil
+        }
+    }
+
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        guard let sectionType = Section(rawValue: indexPath.section) else {
+            return UITableViewCell()
+        }
+
+        switch sectionType {
+        case .name:
+            let cell: EditableTextCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.message = groupName
+            cell.placeholder = "Group Name"
+            cell.onValueBeingEdited = { [weak self] newValue in
+                self?.groupName = newValue
+            }
+            return cell
+
+        case .tunnels:
+            let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+            let name = selectedTunnelNames[indexPath.row]
+            cell.textLabel?.text = name
+            cell.detailTextLabel?.text = indexPath.row == 0 ? "Primary" : "Fallback #\(indexPath.row)"
+            cell.detailTextLabel?.textColor = indexPath.row == 0 ? .systemBlue : .secondaryLabel
+            cell.showsReorderControl = true
+            return cell
+
+        case .addTunnel:
+            let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.buttonText = "Add Tunnel"
+            cell.onTapped = { [weak self] in
+                self?.presentTunnelPicker()
+            }
+            return cell
+
+        case .settings:
+            guard let row = SettingsRow(rawValue: indexPath.row) else { return UITableViewCell() }
+            switch row {
+            case .handshakeTimeout:
+                let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+                cell.textLabel?.text = "Handshake Timeout"
+                cell.detailTextLabel?.text = "\(Int(handshakeTimeout))s"
+                cell.accessoryType = .disclosureIndicator
+                return cell
+            case .healthCheckInterval:
+                let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+                cell.textLabel?.text = "Health Check Interval"
+                cell.detailTextLabel?.text = "\(Int(healthCheckInterval))s"
+                cell.accessoryType = .disclosureIndicator
+                return cell
+            case .failbackProbeInterval:
+                let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+                cell.textLabel?.text = "Failback Probe Interval"
+                cell.detailTextLabel?.text = "\(Int(failbackProbeInterval))s"
+                cell.accessoryType = .disclosureIndicator
+                return cell
+            case .autoFailback:
+                let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+                cell.message = "Auto Failback"
+                cell.isOn = autoFailback
+                cell.onSwitchToggled = { [weak self] isOn in
+                    self?.autoFailback = isOn
+                }
+                return cell
+            }
+
+        case .delete:
+            let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.buttonText = "Delete Failover Group"
+            cell.hasDestructiveAction = true
+            return cell
+        }
+    }
+
+    // MARK: - UITableViewDelegate
+
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+
+        guard let sectionType = Section(rawValue: indexPath.section) else { return }
+
+        if sectionType == .settings {
+            guard let row = SettingsRow(rawValue: indexPath.row), row != .autoFailback else { return }
+            presentValueEditor(for: row)
+        } else if sectionType == .delete {
+            confirmDelete()
+        }
+    }
+
+    override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+        guard let sectionType = Section(rawValue: indexPath.section) else { return false }
+        return sectionType == .tunnels
+    }
+
+    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        if editingStyle == .delete {
+            selectedTunnelNames.remove(at: indexPath.row)
+            tableView.deleteRows(at: [indexPath], with: .automatic)
+            // Reload remaining rows to update Primary/Fallback labels
+            let remainingIndexPaths = (0..<selectedTunnelNames.count).map { IndexPath(row: $0, section: Section.tunnels.rawValue) }
+            tableView.reloadRows(at: remainingIndexPaths, with: .none)
+        }
+    }
+
+    override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
+        guard let sectionType = Section(rawValue: indexPath.section) else { return false }
+        return sectionType == .tunnels
+    }
+
+    override func tableView(_ tableView: UITableView, moveRowAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
+        let item = selectedTunnelNames.remove(at: sourceIndexPath.row)
+        selectedTunnelNames.insert(item, at: destinationIndexPath.row)
+        // Reload to update Primary/Fallback labels
+        tableView.reloadSections(IndexSet(integer: Section.tunnels.rawValue), with: .none)
+    }
+
+    override func tableView(_ tableView: UITableView, targetIndexPathForMoveFromRowAt sourceIndexPath: IndexPath, toProposedIndexPath proposedDestinationIndexPath: IndexPath) -> IndexPath {
+        // Constrain moves to the tunnels section
+        if proposedDestinationIndexPath.section < Section.tunnels.rawValue {
+            return IndexPath(row: 0, section: Section.tunnels.rawValue)
+        } else if proposedDestinationIndexPath.section > Section.tunnels.rawValue {
+            return IndexPath(row: selectedTunnelNames.count - 1, section: Section.tunnels.rawValue)
+        }
+        return proposedDestinationIndexPath
+    }
+
+    // MARK: - Tunnel Picker
+
+    private func presentTunnelPicker() {
+        let unusedTunnels = availableTunnelNames.filter { !selectedTunnelNames.contains($0) }
+        guard !unusedTunnels.isEmpty else {
+            showError("All available tunnels are already in this group.")
+            return
+        }
+
+        let alert = UIAlertController(title: "Add Tunnel", message: "Select a tunnel to add to the failover group.", preferredStyle: .actionSheet)
+        for name in unusedTunnels {
+            alert.addAction(UIAlertAction(title: name, style: .default) { [weak self] _ in
+                self?.addTunnel(named: name)
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        if let popover = alert.popoverPresentationController {
+            let addSection = Section.addTunnel.rawValue
+            if let cell = tableView.cellForRow(at: IndexPath(row: 0, section: addSection)) {
+                popover.sourceView = cell
+                popover.sourceRect = cell.bounds
+            }
+        }
+        present(alert, animated: true)
+    }
+
+    private func addTunnel(named name: String) {
+        selectedTunnelNames.append(name)
+        tableView.insertRows(at: [IndexPath(row: selectedTunnelNames.count - 1, section: Section.tunnels.rawValue)], with: .automatic)
+    }
+
+    // MARK: - Settings Value Editor
+
+    private func presentValueEditor(for row: SettingsRow) {
+        let title: String
+        let currentValue: Int
+        switch row {
+        case .handshakeTimeout:
+            title = "Handshake Timeout (seconds)"
+            currentValue = Int(handshakeTimeout)
+        case .healthCheckInterval:
+            title = "Health Check Interval (seconds)"
+            currentValue = Int(healthCheckInterval)
+        case .failbackProbeInterval:
+            title = "Failback Probe Interval (seconds)"
+            currentValue = Int(failbackProbeInterval)
+        case .autoFailback:
+            return
+        }
+
+        let alert = UIAlertController(title: title, message: nil, preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.text = "\(currentValue)"
+            textField.keyboardType = .numberPad
+        }
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self, weak alert] _ in
+            guard let self = self,
+                  let text = alert?.textFields?.first?.text,
+                  let value = Int(text), value > 0 else { return }
+            switch row {
+            case .handshakeTimeout:
+                self.handshakeTimeout = TimeInterval(value)
+            case .healthCheckInterval:
+                self.healthCheckInterval = TimeInterval(value)
+            case .failbackProbeInterval:
+                self.failbackProbeInterval = TimeInterval(value)
+            case .autoFailback:
+                break
+            }
+            self.tableView.reloadSections(IndexSet(integer: Section.settings.rawValue), with: .none)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    // MARK: - Delete
+
+    private func confirmDelete() {
+        guard let group = group else { return }
+        let alert = UIAlertController(
+            title: "Delete Failover Group",
+            message: "Are you sure you want to delete '\(group.name)'? This won't delete the individual tunnels.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
+            FailoverGroupManager.removeGroup(withId: group.id)
+            self.delegate?.failoverGroupDeleted(group)
+            self.dismiss(animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+}
