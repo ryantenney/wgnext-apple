@@ -1498,6 +1498,12 @@
 				5F4541B221CBFAEE00994C13 /* String+ArrayConversion.swift in Sources */,
 				585B108A2577E294004F691E /* Endpoint.swift in Sources */,
 				6F907C9C224663A2003CED21 /* LogViewHelper.swift in Sources */,
+				BB3D4E01293FA00000000001 /* FailoverSettings.swift in Sources */,
+				BB3D4E01293FA00000000005 /* ConnectionHealthMonitor.swift in Sources */,
+				BB3D4E01293FA00000000009 /* FailoverGroup.swift in Sources */,
+				BB3D4E01293FA0000000000B /* TunnelsManager+Failover.swift in Sources */,
+				BB3D4E01293FA0000000000D /* FailoverGroupCell.swift in Sources */,
+				BB3D4E01293FA0000000000E /* FailoverGroupEditTableViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
