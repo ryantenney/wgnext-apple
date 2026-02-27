@@ -41,8 +41,10 @@ xcuserdata
 fastlane/report.xml
 fastlane/screenshots
 fastlane/test_output
+fastlane/README.md
 Preview.html
 output
+Gemfile.lock
 
 # Wireguard specific
 Sources/WireGuardApp/Config/Developer.xcconfig

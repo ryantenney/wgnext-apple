@@ -1,0 +1,129 @@
+# WireGuard for iOS & macOS - Fastlane Configuration
+#
+# Prerequisites:
+#   brew install fastlane go swiftlint
+#
+# Quick start:
+#   cp Sources/WireGuardApp/Config/Developer.xcconfig.template \
+#      Sources/WireGuardApp/Config/Developer.xcconfig
+#   # Edit Developer.xcconfig with your DEVELOPMENT_TEAM, APP_ID_IOS, APP_ID_MACOS
+#   fastlane ios build
+#
+
+default_platform(:ios)
+
+# ---------------------------------------------------------------------------
+# Shared
+# ---------------------------------------------------------------------------
+
+XCODEPROJ = "WireGuard.xcodeproj"
+
+before_all do
+  xcconfig = File.join(__dir__, "..", "Sources", "WireGuardApp", "Config", "Developer.xcconfig")
+  unless File.exist?(xcconfig)
+    UI.user_error!(
+      "Developer.xcconfig not found. Copy the template first:\n" \
+      "  cp Sources/WireGuardApp/Config/Developer.xcconfig.template " \
+      "Sources/WireGuardApp/Config/Developer.xcconfig\n" \
+      "Then fill in DEVELOPMENT_TEAM, APP_ID_IOS, and APP_ID_MACOS."
+    )
+  end
+end
+
+# ---------------------------------------------------------------------------
+# iOS
+# ---------------------------------------------------------------------------
+
+platform :ios do
+  desc "Build WireGuard for iOS (debug)"
+  lane :build do
+    build_app(
+      project: XCODEPROJ,
+      scheme: "WireGuardiOS",
+      configuration: "Debug",
+      skip_codesigning: true,
+      skip_archive: true,
+      destination: "generic/platform=iOS"
+    )
+  end
+
+  desc "Build and install on connected iOS device"
+  lane :device do
+    build_app(
+      project: XCODEPROJ,
+      scheme: "WireGuardiOS",
+      configuration: "Debug",
+      export_method: "development",
+      skip_profile_detection: true
+    )
+    install_on_device
+  end
+
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    ensure_git_status_clean
+
+    build_app(
+      project: XCODEPROJ,
+      scheme: "WireGuardiOS",
+      configuration: "Release",
+      export_method: "app-store",
+      include_bitcode: false
+    )
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true
+    )
+  end
+
+  desc "Run SwiftLint"
+  lane :lint do
+    swiftlint(
+      mode: :lint,
+      config_file: ".swiftlint.yml",
+      raise_if_swiftlint_error: true
+    )
+  end
+
+  desc "Register new device by name and UDID"
+  lane :register do |options|
+    device_name = options[:name] || UI.input("Device name: ")
+    device_udid = options[:udid] || UI.input("Device UDID: ")
+    register_device(
+      name: device_name,
+      udid: device_udid
+    )
+  end
+
+  desc "Sync development signing (via match)"
+  lane :signing do
+    match(type: "development")
+  end
+end
+
+# ---------------------------------------------------------------------------
+# macOS
+# ---------------------------------------------------------------------------
+
+platform :mac do
+  desc "Build WireGuard for macOS (debug)"
+  lane :build do
+    build_mac_app(
+      project: XCODEPROJ,
+      scheme: "WireGuardmacOS",
+      configuration: "Debug",
+      skip_codesigning: true,
+      skip_archive: true
+    )
+  end
+
+  desc "Build WireGuard for macOS (release)"
+  lane :release do
+    build_mac_app(
+      project: XCODEPROJ,
+      scheme: "WireGuardmacOS",
+      configuration: "Release",
+      export_method: "developer-id"
+    )
+  end
+end

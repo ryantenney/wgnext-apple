@@ -1,0 +1,18 @@
+# Fastlane Match - Signing Certificate & Profile Management
+#
+# Match stores your certificates and profiles in a git repo or cloud storage,
+# so you never have to deal with the Keychain or Developer Portal manually.
+#
+# First-time setup:
+#   1. Create a private git repo for certs (e.g. github.com/you/certs)
+#   2. Uncomment and fill in the values below
+#   3. Run: fastlane ios signing
+#
+# See: https://docs.fastlane.tools/actions/match/
+
+# git_url "https://github.com/your-org/certificates"
+# storage_mode "git"
+
+type "development"
+# app_identifier ["com.yourname.wireguard", "com.yourname.wireguard.network-extension"]
+# team_id "YOUR_TEAM_ID"

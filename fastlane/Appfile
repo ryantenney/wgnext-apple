@@ -1,0 +1,12 @@
+# Fastlane Appfile for WireGuard
+#
+# These values should match your Developer.xcconfig.
+# If you've already configured Developer.xcconfig, Fastlane will
+# pick up DEVELOPMENT_TEAM and bundle IDs from the Xcode project.
+#
+# Uncomment and fill in to override:
+# app_identifier "com.yourname.wireguard"
+# team_id "YOUR_TEAM_ID"
+
+# Apple ID for App Store Connect (only needed for TestFlight/App Store)
+# apple_id "your@email.com"
