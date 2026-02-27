@@ -24,6 +24,10 @@ class FailoverGroupEditTableViewController: UITableViewController {
     private var failbackProbeInterval: TimeInterval
     private var autoFailback: Bool
 
+    // On-demand activation
+    private var onDemandViewModel: ActivateOnDemandViewModel
+    private let onDemandFields: [ActivateOnDemandViewModel.OnDemandField] = [.nonWiFiInterface, .wiFiInterface, .ssid]
+
     // All available tunnel names for selection
     private var availableTunnelNames: [String]
 
@@ -32,6 +36,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case tunnels
         case addTunnel
         case settings
+        case onDemand
         case delete
     }
 
@@ -53,6 +58,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
         self.healthCheckInterval = group?.settings.healthCheckInterval ?? 30
         self.failbackProbeInterval = group?.settings.failbackProbeInterval ?? 300
         self.autoFailback = group?.settings.autoFailback ?? true
+
+        self.onDemandViewModel = ActivateOnDemandViewModel(from: group?.onDemandActivation ?? OnDemandActivation())
 
         self.availableTunnelNames = tunnelsManager.mapTunnels { $0.name }
 
@@ -76,9 +83,11 @@ class FailoverGroupEditTableViewController: UITableViewController {
         tableView.register(KeyValueCell.self)
         tableView.register(ButtonCell.self)
         tableView.register(TextCell.self)
+        tableView.register(ChevronCell.self)
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 44
         tableView.isEditing = true
+        tableView.allowsSelectionDuringEditing = true
     }
 
     @objc private func saveTapped() {
@@ -112,18 +121,22 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 failbackProbeInterval: self.failbackProbeInterval,
                 autoFailback: self.autoFailback
             )
+            self.onDemandViewModel.fixSSIDOption()
+            let onDemandActivation = self.onDemandViewModel.toOnDemandActivation()
 
             if var existingGroup = self.group {
                 existingGroup.name = trimmedName
                 existingGroup.tunnelNames = self.selectedTunnelNames
                 existingGroup.settings = settings
+                existingGroup.onDemandActivation = onDemandActivation
                 FailoverGroupManager.updateGroup(existingGroup)
                 self.delegate?.failoverGroupSaved(existingGroup)
             } else {
                 let newGroup = FailoverGroup(
                     name: trimmedName,
                     tunnelNames: self.selectedTunnelNames,
-                    settings: settings
+                    settings: settings,
+                    onDemandActivation: onDemandActivation
                 )
                 FailoverGroupManager.addGroup(newGroup)
                 self.delegate?.failoverGroupSaved(newGroup)
@@ -175,6 +188,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
             return 1
         case .settings:
             return SettingsRow.allCases.count
+        case .onDemand:
+            return onDemandViewModel.isWiFiInterfaceEnabled ? 3 : 2
         case .delete:
             return 1
         }
@@ -191,6 +206,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
             return nil
         case .settings:
             return "Failover Settings"
+        case .onDemand:
+            return "On-Demand Activation"
         case .delete:
             return nil
         }
@@ -268,10 +285,41 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 return cell
             }
 
+        case .onDemand:
+            return onDemandCell(for: tableView, at: indexPath)
+
         case .delete:
             let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
             cell.buttonText = "Delete Failover Group"
             cell.hasDestructiveAction = true
+            return cell
+        }
+    }
+
+    private func onDemandCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let field = onDemandFields[indexPath.row]
+        if indexPath.row < 2 {
+            let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.message = field.localizedUIString
+            cell.isOn = onDemandViewModel.isEnabled(field: field)
+            cell.onSwitchToggled = { [weak self] isOn in
+                guard let self = self else { return }
+                self.onDemandViewModel.setEnabled(field: field, isEnabled: isOn)
+                let section = Section.onDemand.rawValue
+                let indexPath = IndexPath(row: 2, section: section)
+                if field == .wiFiInterface {
+                    if isOn {
+                        tableView.insertRows(at: [indexPath], with: .fade)
+                    } else {
+                        tableView.deleteRows(at: [indexPath], with: .fade)
+                    }
+                }
+            }
+            return cell
+        } else {
+            let cell: ChevronCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.message = field.localizedUIString
+            cell.detailMessage = onDemandViewModel.localizedSSIDDescription
             return cell
         }
     }
@@ -288,6 +336,10 @@ class FailoverGroupEditTableViewController: UITableViewController {
         } else if sectionType == .settings {
             guard let row = SettingsRow(rawValue: indexPath.row), row != .autoFailback else { return }
             presentValueEditor(for: row)
+        } else if sectionType == .onDemand && indexPath.row == 2 {
+            let ssidOptionVC = SSIDOptionEditTableViewController(option: onDemandViewModel.ssidOption, ssids: onDemandViewModel.selectedSSIDs)
+            ssidOptionVC.delegate = self
+            navigationController?.pushViewController(ssidOptionVC, animated: true)
         } else if sectionType == .delete {
             confirmDelete()
         }
@@ -437,6 +489,21 @@ class FailoverGroupEditTableViewController: UITableViewController {
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
+    }
+}
+
+// MARK: - SSIDOptionEditTableViewControllerDelegate
+
+extension FailoverGroupEditTableViewController: SSIDOptionEditTableViewControllerDelegate {
+    func ssidOptionSaved(option: ActivateOnDemandViewModel.OnDemandSSIDOption, ssids: [String]) {
+        onDemandViewModel.selectedSSIDs = ssids
+        onDemandViewModel.ssidOption = option
+        onDemandViewModel.fixSSIDOption()
+        let onDemandSection = Section.onDemand.rawValue
+        if let ssidRowIndex = onDemandFields.firstIndex(of: .ssid) {
+            let indexPath = IndexPath(row: ssidRowIndex, section: onDemandSection)
+            tableView.reloadRows(at: [indexPath], with: .none)
+        }
     }
 }
 

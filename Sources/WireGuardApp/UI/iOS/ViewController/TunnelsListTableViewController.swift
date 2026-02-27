@@ -24,6 +24,7 @@ class TunnelsListTableViewController: UIViewController {
     var activeFailoverGroupId: UUID?
     var activeFailoverConfigName: String?
     private var failoverStateTimer: Timer?
+    private var primaryTunnelStatusObservation: NSKeyValueObservation?
 
     let tableView: UITableView = {
         let tableView = UITableView(frame: CGRect.zero, style: .grouped)
@@ -360,13 +361,22 @@ extension TunnelsListTableViewController: UITableViewDataSource {
             let cell: FailoverGroupCell = tableView.dequeueReusableCell(for: indexPath)
             let group = failoverGroups[indexPath.row]
             let isActive = activeFailoverGroupId == group.id
-            cell.configure(with: group, isActive: isActive, activeConfigName: isActive ? activeFailoverConfigName : nil)
+            let primaryTunnelStatus: TunnelStatus
+            if isActive, let primaryName = group.tunnelNames.first,
+               let primaryTunnel = tunnelsManager?.tunnel(named: primaryName) {
+                primaryTunnelStatus = primaryTunnel.status
+            } else {
+                primaryTunnelStatus = .inactive
+            }
+            cell.configure(with: group, isActive: isActive, activeConfigName: isActive ? activeFailoverConfigName : nil, isOnDemandEnabled: isActive && group.onDemandActivation.isEnabled, primaryTunnelStatus: primaryTunnelStatus)
             cell.onSwitchToggled = { [weak self] isOn in
                 guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
                 if isOn {
                     self.activeFailoverGroupId = group.id
                     tunnelsManager.startActivation(ofFailoverGroup: group)
                     self.startPollingFailoverState(group: group)
+                    self.observePrimaryTunnelStatus(for: group)
+                    self.reloadTunnelsSection()
                 } else {
                     if let primaryName = group.tunnelNames.first,
                        let primaryTunnel = tunnelsManager.tunnel(named: primaryName) {
@@ -374,7 +384,9 @@ extension TunnelsListTableViewController: UITableViewDataSource {
                             self.activeFailoverGroupId = nil
                             self.activeFailoverConfigName = nil
                             self.stopPollingFailoverState()
+                            self.primaryTunnelStatusObservation = nil
                             self.tableView.reloadSections(IndexSet(integer: ListSection.failoverGroups.rawValue), with: .automatic)
+                            self.reloadTunnelsSection()
                         }
                     }
                 }
@@ -385,6 +397,9 @@ extension TunnelsListTableViewController: UITableViewDataSource {
             let cell: TunnelListCell = tableView.dequeueReusableCell(for: indexPath)
             if let tunnelsManager = tunnelsManager {
                 let tunnel = tunnelsManager.tunnel(at: indexPath.row)
+                let isFailoverPrimary = activeFailoverGroupId != nil
+                    && failoverGroups.first(where: { $0.id == activeFailoverGroupId })?.tunnelNames.first == tunnel.name
+                cell.isInActiveFailoverGroup = isFailoverPrimary
                 cell.tunnel = tunnel
                 cell.onSwitchToggled = { [weak self] isOn in
                     guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
@@ -393,6 +408,7 @@ extension TunnelsListTableViewController: UITableViewDataSource {
                         self.activeFailoverGroupId = nil
                         self.activeFailoverConfigName = nil
                         self.stopPollingFailoverState()
+                        self.primaryTunnelStatusObservation = nil
                     }
                     if tunnel.hasOnDemandRules {
                         tunnelsManager.setOnDemandEnabled(isOn, on: tunnel) { error in
@@ -538,6 +554,20 @@ extension TunnelsListTableViewController {
     func stopPollingFailoverState() {
         failoverStateTimer?.invalidate()
         failoverStateTimer = nil
+    }
+
+    func observePrimaryTunnelStatus(for group: FailoverGroup) {
+        primaryTunnelStatusObservation = nil
+        guard let primaryName = group.tunnelNames.first,
+              let primaryTunnel = tunnelsManager?.tunnel(named: primaryName) else { return }
+        primaryTunnelStatusObservation = primaryTunnel.observe(\.status) { [weak self] _, _ in
+            guard let self = self else { return }
+            self.tableView.reloadSections(IndexSet(integer: ListSection.failoverGroups.rawValue), with: .none)
+        }
+    }
+
+    private func reloadTunnelsSection() {
+        tableView.reloadSections(IndexSet(integer: ListSection.tunnels.rawValue), with: .none)
     }
 
     private func pollFailoverState(group: FailoverGroup) {

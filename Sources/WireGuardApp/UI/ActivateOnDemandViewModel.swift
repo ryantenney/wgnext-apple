@@ -49,6 +49,33 @@ class ActivateOnDemandViewModel {
 }
 
 extension ActivateOnDemandViewModel {
+    convenience init(from activation: OnDemandActivation) {
+        self.init()
+        isWiFiInterfaceEnabled = activation.isWiFiInterfaceEnabled
+        isNonWiFiInterfaceEnabled = activation.isNonWiFiInterfaceEnabled
+        selectedSSIDs = activation.selectedSSIDs
+        switch activation.ssidOption {
+        case .anySSID: ssidOption = .anySSID
+        case .onlySpecificSSIDs: ssidOption = .onlySpecificSSIDs
+        case .exceptSpecificSSIDs: ssidOption = .exceptSpecificSSIDs
+        }
+    }
+
+    func toOnDemandActivation() -> OnDemandActivation {
+        var activation = OnDemandActivation()
+        activation.isWiFiInterfaceEnabled = isWiFiInterfaceEnabled
+        activation.isNonWiFiInterfaceEnabled = isNonWiFiInterfaceEnabled
+        activation.selectedSSIDs = selectedSSIDs
+        switch ssidOption {
+        case .anySSID: activation.ssidOption = .anySSID
+        case .onlySpecificSSIDs: activation.ssidOption = .onlySpecificSSIDs
+        case .exceptSpecificSSIDs: activation.ssidOption = .exceptSpecificSSIDs
+        }
+        return activation
+    }
+}
+
+extension ActivateOnDemandViewModel {
     convenience init(tunnel: TunnelContainer) {
         self.init()
         switch tunnel.onDemandOption {

@@ -24,6 +24,15 @@ class FailoverGroupCell: UITableViewCell {
         return label
     }()
 
+    let onDemandLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.preferredFont(forTextStyle: .caption2)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 1
+        label.textColor = .secondaryLabel
+        return label
+    }()
+
     let activeConfigLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.preferredFont(forTextStyle: .caption2)
@@ -46,7 +55,7 @@ class FailoverGroupCell: UITableViewCell {
 
         accessoryType = .disclosureIndicator
 
-        for subview in [nameLabel, detailLabel, activeConfigLabel, statusSwitch, busyIndicator] {
+        for subview in [nameLabel, detailLabel, onDemandLabel, activeConfigLabel, statusSwitch, busyIndicator] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(subview)
         }
@@ -60,7 +69,11 @@ class FailoverGroupCell: UITableViewCell {
             detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusSwitch.leadingAnchor, constant: -8),
 
-            activeConfigLabel.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: 1),
+            onDemandLabel.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: 1),
+            onDemandLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
+            onDemandLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusSwitch.leadingAnchor, constant: -8),
+
+            activeConfigLabel.topAnchor.constraint(equalTo: onDemandLabel.bottomAnchor, constant: 1),
             activeConfigLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             activeConfigLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusSwitch.leadingAnchor, constant: -8),
             contentView.layoutMarginsGuide.bottomAnchor.constraint(equalToSystemSpacingBelow: activeConfigLabel.bottomAnchor, multiplier: 0.5),
@@ -83,23 +96,42 @@ class FailoverGroupCell: UITableViewCell {
         onSwitchToggled?(statusSwitch.isOn)
     }
 
-    func configure(with group: FailoverGroup, isActive: Bool, activeConfigName: String?) {
+    func configure(with group: FailoverGroup, isActive: Bool, activeConfigName: String?, isOnDemandEnabled: Bool, primaryTunnelStatus: TunnelStatus) {
         nameLabel.text = group.name
 
         let tunnelSummary = group.tunnelNames.joined(separator: " → ")
         detailLabel.text = tunnelSummary
 
         if isActive {
-            if let activeName = activeConfigName {
-                activeConfigLabel.text = "Active: \(activeName)"
+            if primaryTunnelStatus == .active || primaryTunnelStatus == .activating {
+                if let activeName = activeConfigName {
+                    activeConfigLabel.text = "Active: \(activeName)"
+                } else {
+                    activeConfigLabel.text = "Active: \(group.tunnelNames.first ?? "")"
+                }
+                activeConfigLabel.isHidden = false
             } else {
-                activeConfigLabel.text = "Active: \(group.tunnelNames.first ?? "")"
+                activeConfigLabel.isHidden = true
             }
-            activeConfigLabel.isHidden = false
             statusSwitch.setOn(true, animated: false)
-            statusSwitch.onTintColor = .systemGreen
+
+            if isOnDemandEnabled && !(primaryTunnelStatus == .active || primaryTunnelStatus == .activating) {
+                statusSwitch.onTintColor = .systemYellow
+            } else {
+                statusSwitch.onTintColor = .systemGreen
+            }
+
+            if isOnDemandEnabled {
+                onDemandLabel.text = tr("tunnelListCaptionOnDemand")
+                onDemandLabel.isHidden = false
+            } else {
+                onDemandLabel.text = ""
+                onDemandLabel.isHidden = true
+            }
         } else {
             activeConfigLabel.isHidden = true
+            onDemandLabel.text = ""
+            onDemandLabel.isHidden = true
             statusSwitch.setOn(false, animated: false)
         }
     }

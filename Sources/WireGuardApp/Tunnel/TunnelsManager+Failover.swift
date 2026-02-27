@@ -51,13 +51,25 @@ extension TunnelsManager {
 
         proto.providerConfiguration = providerConfig
 
+        // Apply on-demand rules from the failover group
+        let onDemandOption = group.onDemandActivation.toActivateOnDemandOption()
+        onDemandOption.apply(on: tunnelProvider)
+        tunnelProvider.isOnDemandEnabled = group.onDemandActivation.isEnabled
+
         tunnelProvider.saveToPreferences { [weak self] error in
             if let error = error {
                 wg_log(.error, message: "Failover: failed to save provider configuration: \(error)")
                 return
             }
-            wg_log(.info, message: "Failover: activating group '\(group.name)' with \(configs.count) configs")
-            self?.startActivation(of: primaryTunnel)
+            if group.onDemandActivation.isEnabled {
+                // On-demand is enabled — let the system activate based on network rules
+                wg_log(.info, message: "Failover: enabled on-demand for group '\(group.name)' with \(configs.count) configs")
+                // Force a loadFromPreferences so the tunnel's KVO properties update
+                tunnelProvider.loadFromPreferences { _ in }
+            } else {
+                wg_log(.info, message: "Failover: activating group '\(group.name)' with \(configs.count) configs")
+                self?.startActivation(of: primaryTunnel)
+            }
         }
     }
 
@@ -109,6 +121,10 @@ extension TunnelsManager {
         providerConfig.removeValue(forKey: "FailoverSettings")
         providerConfig.removeValue(forKey: "FailoverGroupId")
         proto.providerConfiguration = providerConfig
+
+        // Clear on-demand rules that were set by the failover group
+        tunnelProvider.onDemandRules = nil
+        tunnelProvider.isOnDemandEnabled = false
 
         tunnelProvider.saveToPreferences { _ in
             completionHandler()
