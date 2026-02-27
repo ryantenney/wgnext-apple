@@ -3,6 +3,13 @@
 
 import Foundation
 
+/// Protocol abstracting the adapter operations needed by the health monitor.
+/// `WireGuardAdapter` conforms to this protocol.
+public protocol FailoverAdapterProtocol: AnyObject {
+    func getRuntimeConfiguration(completionHandler: @escaping (String?) -> Void)
+    func update(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (Error?) -> Void)
+}
+
 /// Delegate protocol for receiving failover events from the health monitor.
 public protocol ConnectionHealthMonitorDelegate: AnyObject {
     /// Called when the monitor switches to a different configuration.
@@ -15,13 +22,19 @@ public protocol ConnectionHealthMonitorDelegate: AnyObject {
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int)
 }
 
+/// Log level for failover messages.
+public enum FailoverLogLevel: Int32 {
+    case verbose = 0
+    case error = 1
+}
+
 /// Monitors WireGuard handshake health across multiple tunnel configurations and
-/// triggers failover via `WireGuardAdapter.update()` when the active connection
-/// becomes unhealthy. Runs entirely in the Network Extension process.
+/// triggers failover via adapter update when the active connection becomes unhealthy.
+/// Runs entirely in the Network Extension process.
 public class ConnectionHealthMonitor {
 
     /// The adapter used to query runtime config and switch configurations.
-    private weak var adapter: WireGuardAdapter?
+    private weak var adapter: FailoverAdapterProtocol?
 
     /// Ordered list of tunnel configurations (index 0 = primary).
     private let configurations: [TunnelConfiguration]
@@ -32,8 +45,8 @@ public class ConnectionHealthMonitor {
     /// Delegate for failover event notifications.
     public weak var delegate: ConnectionHealthMonitorDelegate?
 
-    /// Log handler closure matching WireGuardAdapter's convention.
-    private let logHandler: (WireGuardLogLevel, String) -> Void
+    /// Log handler closure.
+    private let logHandler: (FailoverLogLevel, String) -> Void
 
     /// Index of the currently active configuration.
     public private(set) var activeIndex: Int = 0
@@ -71,10 +84,10 @@ public class ConnectionHealthMonitor {
     // MARK: - Initialization
 
     public init(
-        adapter: WireGuardAdapter,
+        adapter: FailoverAdapterProtocol,
         configurations: [TunnelConfiguration],
         settings: FailoverSettings,
-        logHandler: @escaping (WireGuardLogLevel, String) -> Void
+        logHandler: @escaping (FailoverLogLevel, String) -> Void
     ) {
         self.adapter = adapter
         self.configurations = configurations
@@ -147,7 +160,7 @@ public class ConnectionHealthMonitor {
     private func checkHealth() {
         guard isRunning, let adapter = adapter else { return }
 
-        adapter.getRuntimeConfiguration { [weak self] configString in
+        adapter.getRuntimeConfiguration { [weak self] (configString: String?) in
             guard let self = self, let configString = configString else { return }
             self.workQueue.async {
                 self.evaluateHealth(runtimeConfig: configString)
@@ -200,7 +213,7 @@ public class ConnectionHealthMonitor {
         guard let adapter = adapter else { return }
 
         let config = configurations[index]
-        adapter.update(tunnelConfiguration: config) { [weak self] error in
+        adapter.update(tunnelConfiguration: config) { [weak self] (error: Error?) in
             guard let self = self else { return }
             self.workQueue.async {
                 if let error = error {
@@ -250,7 +263,7 @@ public class ConnectionHealthMonitor {
         logHandler(.verbose, "Failover: probing primary '\(primaryName)' for recovery")
 
         // Switch to primary
-        adapter.update(tunnelConfiguration: configurations[0]) { [weak self] error in
+        adapter.update(tunnelConfiguration: configurations[0]) { [weak self] (error: Error?) in
             guard let self = self else { return }
             self.workQueue.async {
                 guard error == nil else {
@@ -274,7 +287,7 @@ public class ConnectionHealthMonitor {
             return
         }
 
-        adapter.getRuntimeConfiguration { [weak self] configString in
+        adapter.getRuntimeConfiguration { [weak self] (configString: String?) in
             guard let self = self, let configString = configString else {
                 self?.isProbing = false
                 return
@@ -295,7 +308,7 @@ public class ConnectionHealthMonitor {
                     // Primary still unhealthy — revert
                     let fallbackName = self.configurations[savedFallbackIndex].name ?? "config #\(savedFallbackIndex)"
                     self.logHandler(.verbose, "Failover: primary still unhealthy (\(Int(handshakeAge))s), reverting to '\(fallbackName)'")
-                    adapter.update(tunnelConfiguration: self.configurations[savedFallbackIndex]) { [weak self] _ in
+                    adapter.update(tunnelConfiguration: self.configurations[savedFallbackIndex]) { [weak self] (_: Error?) in
                         self?.isProbing = false
                     }
                 }

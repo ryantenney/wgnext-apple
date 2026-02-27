@@ -181,7 +181,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             adapter: adapter,
             configurations: failoverConfigs,
             settings: settings
-        ) { logLevel, message in
+        ) { (logLevel: FailoverLogLevel, message: String) in
             wg_log(logLevel.osLogLevel, message: message)
         }
         monitor.delegate = self
@@ -211,6 +211,17 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     }
 }
 
+extension FailoverLogLevel {
+    var osLogLevel: OSLogType {
+        switch self {
+        case .verbose:
+            return .debug
+        case .error:
+            return .error
+        }
+    }
+}
+
 extension WireGuardLogLevel {
     var osLogLevel: OSLogType {
         switch self {
@@ -218,6 +229,14 @@ extension WireGuardLogLevel {
             return .debug
         case .error:
             return .error
+        }
+    }
+}
+
+extension WireGuardAdapter: FailoverAdapterProtocol {
+    public func update(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (Error?) -> Void) {
+        update(tunnelConfiguration: tunnelConfiguration) { (error: WireGuardAdapterError?) in
+            completionHandler(error)
         }
     }
 }

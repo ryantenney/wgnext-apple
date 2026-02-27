@@ -1220,7 +1220,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "find . -name '*.swift' -exec sed -i '' -E 's/[[:space:]]+$//g' {} +\n";
+			shellScript = "find . -name '*.swift' -exec sed -i'' -E 's/[[:space:]]+$//g' {} +\n";
 		};
 		6FB1BDB421D4F5CF00A991BF /* Swiftlint */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1256,7 +1256,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "find . -name '*.swift' -exec sed -i '' -E 's/[[:space:]]+$//g' {} +\n";
+			shellScript = "find . -name '*.swift' -exec sed -i'' -E 's/[[:space:]]+$//g' {} +\n";
 		};
 		6FB1BDB921D4FAD000A991BF /* Swiftlint */ = {
 			isa = PBXShellScriptBuildPhase;
