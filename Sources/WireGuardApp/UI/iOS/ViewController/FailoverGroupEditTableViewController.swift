@@ -339,8 +339,12 @@ class FailoverGroupEditTableViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, moveRowAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
         let item = selectedTunnelNames.remove(at: sourceIndexPath.row)
         selectedTunnelNames.insert(item, at: destinationIndexPath.row)
-        // Reload to update Primary/Fallback labels
-        tableView.reloadSections(IndexSet(integer: Section.tunnels.rawValue), with: .none)
+        // Defer reload so it runs after the move animation completes;
+        // calling reloadSections inside moveRowAt duplicates rows.
+        DispatchQueue.main.async {
+            let rows = (0..<self.selectedTunnelNames.count).map { IndexPath(row: $0, section: Section.tunnels.rawValue) }
+            tableView.reloadRows(at: rows, with: .none)
+        }
     }
 
     override func tableView(_ tableView: UITableView, targetIndexPathForMoveFromRowAt sourceIndexPath: IndexPath, toProposedIndexPath proposedDestinationIndexPath: IndexPath) -> IndexPath {
