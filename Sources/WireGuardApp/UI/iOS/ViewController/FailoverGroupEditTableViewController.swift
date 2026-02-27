@@ -339,27 +339,14 @@ class FailoverGroupEditTableViewController: UITableViewController {
             return
         }
 
-        let alert = UIAlertController(title: "Add Tunnel", message: "Select a tunnel to add to the failover group.", preferredStyle: .actionSheet)
-        for name in unusedTunnels {
-            alert.addAction(UIAlertAction(title: name, style: .default) { [weak self] _ in
-                self?.addTunnel(named: name)
-            })
-        }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-
-        if let popover = alert.popoverPresentationController {
-            let addSection = Section.addTunnel.rawValue
-            if let cell = tableView.cellForRow(at: IndexPath(row: 0, section: addSection)) {
-                popover.sourceView = cell
-                popover.sourceRect = cell.bounds
+        let picker = TunnelPickerTableViewController(tunnelNames: unusedTunnels) { [weak self] selected in
+            guard let self = self else { return }
+            for name in selected {
+                self.selectedTunnelNames.append(name)
             }
+            self.tableView.reloadSections(IndexSet(integer: Section.tunnels.rawValue), with: .automatic)
         }
-        present(alert, animated: true)
-    }
-
-    private func addTunnel(named name: String) {
-        selectedTunnelNames.append(name)
-        tableView.insertRows(at: [IndexPath(row: selectedTunnelNames.count - 1, section: Section.tunnels.rawValue)], with: .automatic)
+        navigationController?.pushViewController(picker, animated: true)
     }
 
     // MARK: - Settings Value Editor
@@ -406,6 +393,13 @@ class FailoverGroupEditTableViewController: UITableViewController {
         present(alert, animated: true)
     }
 
+    // MARK: - Editing Mode for Reorder
+
+    override func setEditing(_ editing: Bool, animated: Bool) {
+        super.setEditing(editing, animated: animated)
+        tableView.reloadSections(IndexSet(integer: Section.tunnels.rawValue), with: .none)
+    }
+
     // MARK: - Delete
 
     private func confirmDelete() {
@@ -423,5 +417,78 @@ class FailoverGroupEditTableViewController: UITableViewController {
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
+    }
+}
+
+// MARK: - Tunnel Picker
+
+class TunnelPickerTableViewController: UITableViewController {
+
+    private let tunnelNames: [String]
+    private var selectedNames: Set<String> = []
+    private let onSelection: ([String]) -> Void
+
+    init(tunnelNames: [String], onSelection: @escaping ([String]) -> Void) {
+        self.tunnelNames = tunnelNames
+        self.onSelection = onSelection
+        super.init(style: .grouped)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "Add Tunnels"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Add", style: .done, target: self, action: #selector(addTapped))
+        updateAddButton()
+    }
+
+    @objc private func addTapped() {
+        let ordered = tunnelNames.filter { selectedNames.contains($0) }
+        onSelection(ordered)
+        navigationController?.popViewController(animated: true)
+    }
+
+    private func updateAddButton() {
+        navigationItem.rightBarButtonItem?.isEnabled = !selectedNames.isEmpty
+        if !selectedNames.isEmpty {
+            navigationItem.rightBarButtonItem?.title = "Add (\(selectedNames.count))"
+        } else {
+            navigationItem.rightBarButtonItem?.title = "Add"
+        }
+    }
+
+    // MARK: - Data Source
+
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return tunnelNames.count
+    }
+
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let name = tunnelNames[indexPath.row]
+        let cell = UITableViewCell(style: .default, reuseIdentifier: "TunnelPickerCell")
+        cell.textLabel?.text = name
+        cell.accessoryType = selectedNames.contains(name) ? .checkmark : .none
+        return cell
+    }
+
+    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        return "Tap to select tunnels, then press Add."
+    }
+
+    // MARK: - Delegate
+
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let name = tunnelNames[indexPath.row]
+        if selectedNames.contains(name) {
+            selectedNames.remove(name)
+        } else {
+            selectedNames.insert(name)
+        }
+        tableView.reloadRows(at: [indexPath], with: .none)
+        updateAddButton()
     }
 }
