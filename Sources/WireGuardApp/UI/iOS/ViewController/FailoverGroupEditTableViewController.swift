@@ -78,6 +78,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         tableView.register(TextCell.self)
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 44
+        tableView.isEditing = true
     }
 
     @objc private func saveTapped() {
@@ -234,9 +235,6 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .addTunnel:
             let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
             cell.buttonText = "Add Tunnel"
-            cell.onTapped = { [weak self] in
-                self?.presentTunnelPicker()
-            }
             return cell
 
         case .settings:
@@ -285,7 +283,9 @@ class FailoverGroupEditTableViewController: UITableViewController {
 
         guard let sectionType = Section(rawValue: indexPath.section) else { return }
 
-        if sectionType == .settings {
+        if sectionType == .addTunnel {
+            presentTunnelPicker()
+        } else if sectionType == .settings {
             guard let row = SettingsRow(rawValue: indexPath.row), row != .autoFailback else { return }
             presentValueEditor(for: row)
         } else if sectionType == .delete {
@@ -296,6 +296,29 @@ class FailoverGroupEditTableViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
         guard let sectionType = Section(rawValue: indexPath.section) else { return false }
         return sectionType == .tunnels
+    }
+
+    override func tableView(_ tableView: UITableView, editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
+        // Return .none to show reorder handles without delete buttons in editing mode.
+        // Swipe-to-delete still works via trailingSwipeActionsConfigurationForRowAt.
+        return .none
+    }
+
+    override func tableView(_ tableView: UITableView, shouldIndentWhileEditingRowAt indexPath: IndexPath) -> Bool {
+        return false
+    }
+
+    override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard let sectionType = Section(rawValue: indexPath.section), sectionType == .tunnels else { return nil }
+        let deleteAction = UIContextualAction(style: .destructive, title: "Remove") { [weak self] _, _, completionHandler in
+            guard let self = self else { return }
+            self.selectedTunnelNames.remove(at: indexPath.row)
+            tableView.deleteRows(at: [indexPath], with: .automatic)
+            let remaining = (0..<self.selectedTunnelNames.count).map { IndexPath(row: $0, section: Section.tunnels.rawValue) }
+            tableView.reloadRows(at: remaining, with: .none)
+            completionHandler(true)
+        }
+        return UISwipeActionsConfiguration(actions: [deleteAction])
     }
 
     override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
@@ -391,13 +414,6 @@ class FailoverGroupEditTableViewController: UITableViewController {
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
-    }
-
-    // MARK: - Editing Mode for Reorder
-
-    override func setEditing(_ editing: Bool, animated: Bool) {
-        super.setEditing(editing, animated: animated)
-        tableView.reloadSections(IndexSet(integer: Section.tunnels.rawValue), with: .none)
     }
 
     // MARK: - Delete
