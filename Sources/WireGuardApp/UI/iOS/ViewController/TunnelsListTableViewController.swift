@@ -300,6 +300,24 @@ class TunnelsListTableViewController: UIViewController {
         detailDisplayedTunnel = tunnel
         self.presentedViewController?.dismiss(animated: false, completion: nil)
     }
+
+    func showFailoverGroupDetail(for tunnel: TunnelContainer, animated: Bool) {
+        guard let tunnelsManager = tunnelsManager else { return }
+        guard let splitViewController = splitViewController else { return }
+        guard let navController = navigationController else { return }
+
+        let detailVC = FailoverGroupDetailTableViewController(tunnelsManager: tunnelsManager,
+                                                              tunnel: tunnel)
+        let detailNC = UINavigationController(rootViewController: detailVC)
+        detailNC.restorationIdentifier = "DetailNC"
+        if splitViewController.isCollapsed && navController.viewControllers.count > 1 {
+            navController.setViewControllers([self, detailNC], animated: animated)
+        } else {
+            splitViewController.showDetailViewController(detailNC, sender: self, animated: animated)
+        }
+        detailDisplayedTunnel = tunnel
+        self.presentedViewController?.dismiss(animated: false, completion: nil)
+    }
 }
 
 extension TunnelsListTableViewController: UIDocumentPickerDelegate {
@@ -416,10 +434,9 @@ extension TunnelsListTableViewController: UITableViewDelegate {
 
         switch listSection {
         case .failoverGroups:
-            tableView.deselectRow(at: indexPath, animated: true)
             guard let tunnelsManager = tunnelsManager else { return }
             let groupTunnel = tunnelsManager.failoverGroup(at: indexPath.row)
-            presentFailoverGroupEditor(tunnelsManager: tunnelsManager, groupTunnel: groupTunnel)
+            showFailoverGroupDetail(for: groupTunnel, animated: true)
 
         case .tunnels:
             guard let tunnelsManager = tunnelsManager else { return }
@@ -542,6 +559,21 @@ extension TunnelsListTableViewController: TunnelsManagerFailoverGroupListDelegat
     func failoverGroupRemoved(at index: Int, tunnel: TunnelContainer) {
         tableView.deleteRows(at: [IndexPath(row: index, section: failoverGroupsSection)], with: .automatic)
         centeredAddButton.isHidden = (tunnelsManager?.numberOfTunnels() ?? 0) > 0 || (tunnelsManager?.numberOfFailoverGroups() ?? 0) > 0
+        if detailDisplayedTunnel == tunnel, let splitViewController = splitViewController {
+            if splitViewController.isCollapsed != false {
+                (splitViewController.viewControllers[0] as? UINavigationController)?.popToRootViewController(animated: false)
+            } else {
+                let detailVC = UIViewController()
+                detailVC.view.backgroundColor = .systemBackground
+                let detailNC = UINavigationController(rootViewController: detailVC)
+                splitViewController.showDetailViewController(detailNC, sender: self)
+            }
+            detailDisplayedTunnel = nil
+            if let presentedNavController = self.presentedViewController as? UINavigationController,
+               presentedNavController.viewControllers.first is FailoverGroupEditTableViewController {
+                self.presentedViewController?.dismiss(animated: false, completion: nil)
+            }
+        }
     }
 }
 
