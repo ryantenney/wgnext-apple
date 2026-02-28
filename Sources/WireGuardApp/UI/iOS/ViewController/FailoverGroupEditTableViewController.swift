@@ -20,7 +20,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
     // Editable state
     private var groupName: String
     private var selectedTunnelNames: [String]
-    private var handshakeTimeout: TimeInterval
+    private var trafficTimeout: TimeInterval
     private var healthCheckInterval: TimeInterval
     private var failbackProbeInterval: TimeInterval
     private var autoFailback: Bool
@@ -42,7 +42,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
     }
 
     private enum SettingsRow: Int, CaseIterable {
-        case handshakeTimeout
+        case trafficTimeout
         case healthCheckInterval
         case failbackProbeInterval
         case autoFailback
@@ -63,7 +63,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
             if let settingsData = providerConfig["FailoverSettings"] as? Data {
                 settings = (try? JSONDecoder().decode(FailoverSettings.self, from: settingsData)) ?? FailoverSettings()
             }
-            self.handshakeTimeout = settings.handshakeTimeout
+            self.trafficTimeout = settings.trafficTimeout
             self.healthCheckInterval = settings.healthCheckInterval
             self.failbackProbeInterval = settings.failbackProbeInterval
             self.autoFailback = settings.autoFailback
@@ -72,8 +72,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
         } else {
             self.groupName = ""
             self.selectedTunnelNames = []
-            self.handshakeTimeout = 180
-            self.healthCheckInterval = 30
+            self.trafficTimeout = 30
+            self.healthCheckInterval = 10
             self.failbackProbeInterval = 300
             self.autoFailback = true
             self.onDemandViewModel = ActivateOnDemandViewModel(from: OnDemandActivation())
@@ -119,22 +119,10 @@ class FailoverGroupEditTableViewController: UITableViewController {
             return
         }
 
-        // Check that all tunnels have PersistentKeepalive set
-        var tunnelsWithoutKeepalive: [String] = []
-        for name in selectedTunnelNames {
-            if let tunnel = tunnelsManager.tunnel(named: name),
-               let config = tunnel.tunnelConfiguration {
-                for peer in config.peers where peer.persistentKeepAlive == nil {
-                    tunnelsWithoutKeepalive.append(name)
-                    break
-                }
-            }
-        }
-
         let doSave = { [weak self] in
             guard let self = self else { return }
             let settings = FailoverSettings(
-                handshakeTimeout: self.handshakeTimeout,
+                trafficTimeout: self.trafficTimeout,
                 healthCheckInterval: self.healthCheckInterval,
                 failbackProbeInterval: self.failbackProbeInterval,
                 autoFailback: self.autoFailback
@@ -177,19 +165,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
             }
         }
 
-        if !tunnelsWithoutKeepalive.isEmpty {
-            let names = tunnelsWithoutKeepalive.joined(separator: ", ")
-            let alert = UIAlertController(
-                title: "PersistentKeepalive Not Set",
-                message: "Tunnels [\(names)] don't have PersistentKeepalive configured. Failover health detection requires it to work reliably. Save anyway?",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "Save Anyway", style: .default) { _ in doSave() })
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            present(alert, animated: true)
-        } else {
-            doSave()
-        }
+        doSave()
     }
 
     @objc private func cancelTapped() {
@@ -252,7 +228,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .tunnels:
             return "First tunnel is primary. Drag to reorder priority."
         case .settings:
-            return "PersistentKeepalive must be enabled on all tunnels for reliable health detection."
+            return "Failover triggers when the tunnel is sending data but not receiving any for the configured timeout."
         default:
             return nil
         }
@@ -290,10 +266,10 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .settings:
             guard let row = SettingsRow(rawValue: indexPath.row) else { return UITableViewCell() }
             switch row {
-            case .handshakeTimeout:
+            case .trafficTimeout:
                 let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Handshake Timeout"
-                cell.detailTextLabel?.text = "\(Int(handshakeTimeout))s"
+                cell.textLabel?.text = "Traffic Timeout"
+                cell.detailTextLabel?.text = "\(Int(trafficTimeout))s"
                 cell.accessoryType = .disclosureIndicator
                 return cell
             case .healthCheckInterval:
@@ -467,9 +443,9 @@ class FailoverGroupEditTableViewController: UITableViewController {
         let title: String
         let currentValue: Int
         switch row {
-        case .handshakeTimeout:
-            title = "Handshake Timeout (seconds)"
-            currentValue = Int(handshakeTimeout)
+        case .trafficTimeout:
+            title = "Traffic Timeout (seconds)"
+            currentValue = Int(trafficTimeout)
         case .healthCheckInterval:
             title = "Health Check Interval (seconds)"
             currentValue = Int(healthCheckInterval)
@@ -490,8 +466,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
                   let text = alert?.textFields?.first?.text,
                   let value = Int(text), value > 0 else { return }
             switch row {
-            case .handshakeTimeout:
-                self.handshakeTimeout = TimeInterval(value)
+            case .trafficTimeout:
+                self.trafficTimeout = TimeInterval(value)
             case .healthCheckInterval:
                 self.healthCheckInterval = TimeInterval(value)
             case .failbackProbeInterval:

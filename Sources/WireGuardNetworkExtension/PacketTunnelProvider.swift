@@ -199,9 +199,9 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
         wg_log(.info, message: "Failover: now active on '\(name)'")
     }
 
-    func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectUnhealthyConnectionAt index: Int, handshakeAge: TimeInterval) {
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectUnhealthyConnectionAt index: Int, txWithoutRxDuration: TimeInterval) {
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
-        wg_log(.info, message: "Failover: '\(name)' unhealthy (no handshake for \(Int(handshakeAge))s)")
+        wg_log(.info, message: "Failover: '\(name)' unhealthy (tx without rx for \(Int(txWithoutRxDuration))s)")
     }
 
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int) {
