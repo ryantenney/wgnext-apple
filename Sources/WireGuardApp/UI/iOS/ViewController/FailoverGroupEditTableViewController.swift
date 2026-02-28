@@ -2,10 +2,11 @@
 // Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
 
 import UIKit
+import NetworkExtension
 
 protocol FailoverGroupEditDelegate: AnyObject {
-    func failoverGroupSaved(_ group: FailoverGroup)
-    func failoverGroupDeleted(_ group: FailoverGroup)
+    func failoverGroupSaved(_ tunnel: TunnelContainer)
+    func failoverGroupDeleted(_ tunnel: TunnelContainer)
 }
 
 class FailoverGroupEditTableViewController: UITableViewController {
@@ -13,7 +14,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
     weak var delegate: FailoverGroupEditDelegate?
 
     private let tunnelsManager: TunnelsManager
-    private var group: FailoverGroup?
+    private var groupTunnel: TunnelContainer?
     private var isNewGroup: Bool
 
     // Editable state
@@ -47,19 +48,36 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case autoFailback
     }
 
-    init(tunnelsManager: TunnelsManager, group: FailoverGroup? = nil) {
+    init(tunnelsManager: TunnelsManager, groupTunnel: TunnelContainer? = nil) {
         self.tunnelsManager = tunnelsManager
-        self.group = group
-        self.isNewGroup = (group == nil)
+        self.groupTunnel = groupTunnel
+        self.isNewGroup = (groupTunnel == nil)
 
-        self.groupName = group?.name ?? ""
-        self.selectedTunnelNames = group?.tunnelNames ?? []
-        self.handshakeTimeout = group?.settings.handshakeTimeout ?? 180
-        self.healthCheckInterval = group?.settings.healthCheckInterval ?? 30
-        self.failbackProbeInterval = group?.settings.failbackProbeInterval ?? 300
-        self.autoFailback = group?.settings.autoFailback ?? true
+        if let groupTunnel = groupTunnel,
+           let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol {
+            let providerConfig = proto.providerConfiguration ?? [:]
+            self.groupName = groupTunnel.name
+            self.selectedTunnelNames = (providerConfig["FailoverConfigNames"] as? [String]) ?? []
 
-        self.onDemandViewModel = ActivateOnDemandViewModel(from: group?.onDemandActivation ?? OnDemandActivation())
+            var settings = FailoverSettings()
+            if let settingsData = providerConfig["FailoverSettings"] as? Data {
+                settings = (try? JSONDecoder().decode(FailoverSettings.self, from: settingsData)) ?? FailoverSettings()
+            }
+            self.handshakeTimeout = settings.handshakeTimeout
+            self.healthCheckInterval = settings.healthCheckInterval
+            self.failbackProbeInterval = settings.failbackProbeInterval
+            self.autoFailback = settings.autoFailback
+
+            self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: groupTunnel)
+        } else {
+            self.groupName = ""
+            self.selectedTunnelNames = []
+            self.handshakeTimeout = 180
+            self.healthCheckInterval = 30
+            self.failbackProbeInterval = 300
+            self.autoFailback = true
+            self.onDemandViewModel = ActivateOnDemandViewModel(from: OnDemandActivation())
+        }
 
         self.availableTunnelNames = tunnelsManager.mapTunnels { $0.name }
 
@@ -124,24 +142,39 @@ class FailoverGroupEditTableViewController: UITableViewController {
             self.onDemandViewModel.fixSSIDOption()
             let onDemandActivation = self.onDemandViewModel.toOnDemandActivation()
 
-            if var existingGroup = self.group {
-                existingGroup.name = trimmedName
-                existingGroup.tunnelNames = self.selectedTunnelNames
-                existingGroup.settings = settings
-                existingGroup.onDemandActivation = onDemandActivation
-                FailoverGroupManager.updateGroup(existingGroup)
-                self.delegate?.failoverGroupSaved(existingGroup)
-            } else {
-                let newGroup = FailoverGroup(
+            if let existingTunnel = self.groupTunnel {
+                self.tunnelsManager.modifyFailoverGroup(
+                    tunnel: existingTunnel,
                     name: trimmedName,
                     tunnelNames: self.selectedTunnelNames,
                     settings: settings,
                     onDemandActivation: onDemandActivation
-                )
-                FailoverGroupManager.addGroup(newGroup)
-                self.delegate?.failoverGroupSaved(newGroup)
+                ) { [weak self] error in
+                    guard let self = self else { return }
+                    if let error = error {
+                        ErrorPresenter.showErrorAlert(error: error, from: self)
+                        return
+                    }
+                    self.delegate?.failoverGroupSaved(existingTunnel)
+                    self.dismiss(animated: true)
+                }
+            } else {
+                self.tunnelsManager.addFailoverGroup(
+                    name: trimmedName,
+                    tunnelNames: self.selectedTunnelNames,
+                    settings: settings,
+                    onDemandActivation: onDemandActivation
+                ) { [weak self] result in
+                    guard let self = self else { return }
+                    switch result {
+                    case .failure(let error):
+                        ErrorPresenter.showErrorAlert(error: error, from: self)
+                    case .success(let newTunnel):
+                        self.delegate?.failoverGroupSaved(newTunnel)
+                        self.dismiss(animated: true)
+                    }
+                }
             }
-            self.dismiss(animated: true)
         }
 
         if !tunnelsWithoutKeepalive.isEmpty {
@@ -475,17 +508,23 @@ class FailoverGroupEditTableViewController: UITableViewController {
     // MARK: - Delete
 
     private func confirmDelete() {
-        guard let group = group else { return }
+        guard let groupTunnel = groupTunnel else { return }
         let alert = UIAlertController(
             title: "Delete Failover Group",
-            message: "Are you sure you want to delete '\(group.name)'? This won't delete the individual tunnels.",
+            message: "Are you sure you want to delete '\(groupTunnel.name)'? This won't delete the individual tunnels.",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
             guard let self = self else { return }
-            FailoverGroupManager.removeGroup(withId: group.id)
-            self.delegate?.failoverGroupDeleted(group)
-            self.dismiss(animated: true)
+            self.tunnelsManager.removeFailoverGroup(tunnel: groupTunnel) { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    ErrorPresenter.showErrorAlert(error: error, from: self)
+                    return
+                }
+                self.delegate?.failoverGroupDeleted(groupTunnel)
+                self.dismiss(animated: true)
+            }
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)

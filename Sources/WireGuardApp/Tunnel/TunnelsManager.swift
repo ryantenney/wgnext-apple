@@ -12,6 +12,13 @@ protocol TunnelsManagerListDelegate: AnyObject {
     func tunnelRemoved(at index: Int, tunnel: TunnelContainer)
 }
 
+protocol TunnelsManagerFailoverGroupListDelegate: AnyObject {
+    func failoverGroupAdded(at index: Int)
+    func failoverGroupModified(at index: Int)
+    func failoverGroupMoved(from oldIndex: Int, to newIndex: Int)
+    func failoverGroupRemoved(at index: Int, tunnel: TunnelContainer)
+}
+
 protocol TunnelsManagerActivationDelegate: AnyObject {
     func tunnelActivationAttemptFailed(tunnel: TunnelContainer, error: TunnelsManagerActivationAttemptError) // startTunnel wasn't called or failed
     func tunnelActivationAttemptSucceeded(tunnel: TunnelContainer) // startTunnel succeeded
@@ -20,15 +27,19 @@ protocol TunnelsManagerActivationDelegate: AnyObject {
 }
 
 class TunnelsManager {
-    private var tunnels: [TunnelContainer]
+    var tunnels: [TunnelContainer]
+    var failoverGroupTunnels: [TunnelContainer]
     weak var tunnelsListDelegate: TunnelsManagerListDelegate?
+    weak var failoverGroupListDelegate: TunnelsManagerFailoverGroupListDelegate?
     weak var activationDelegate: TunnelsManagerActivationDelegate?
     private var statusObservationToken: NotificationToken?
     private var waiteeObservationToken: NSKeyValueObservation?
     private var configurationsObservationToken: NotificationToken?
 
     init(tunnelProviders: [NETunnelProviderManager]) {
-        tunnels = tunnelProviders.map { TunnelContainer(tunnel: $0) }.sorted { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
+        let allContainers = tunnelProviders.map { TunnelContainer(tunnel: $0) }
+        tunnels = allContainers.filter { !$0.isFailoverGroup }.sorted { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
+        failoverGroupTunnels = allContainers.filter { $0.isFailoverGroup }.sorted { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
         startObservingTunnelStatuses()
         startObservingTunnelConfigurations()
     }
@@ -52,6 +63,15 @@ class TunnelsManager {
                     tunnelNames.insert(tunnelName)
                 }
                 guard let proto = tunnelManager.protocolConfiguration as? NETunnelProviderProtocol else { continue }
+                // Failover group managers borrow their passwordReference from the primary tunnel's
+                // Keychain entry — skip migration and orphan removal for them.
+                let isFailoverGroup = proto.providerConfiguration?["FailoverGroupId"] != nil
+                if isFailoverGroup {
+                    if let ref = proto.passwordReference {
+                        refs.insert(ref)
+                    }
+                    continue
+                }
                 if proto.migrateConfigurationIfNeeded(called: tunnelManager.localizedDescription ?? "unknown") {
                     tunnelManager.saveToPreferences { _ in }
                 }
@@ -89,20 +109,25 @@ class TunnelsManager {
             guard let self = self else { return }
 
             let loadedTunnelProviders = managers ?? []
+            let loadedRegular = loadedTunnelProviders.filter {
+                ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] == nil
+            }
+            let loadedFailoverGroups = loadedTunnelProviders.filter {
+                ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] != nil
+            }
 
+            // Reconcile regular tunnels
             for (index, currentTunnel) in self.tunnels.enumerated().reversed() {
-                if !loadedTunnelProviders.contains(where: { $0.isEquivalentTo(currentTunnel) }) {
-                    // Tunnel was deleted outside the app
+                if !loadedRegular.contains(where: { $0.isEquivalentTo(currentTunnel) }) {
                     self.tunnels.remove(at: index)
                     self.tunnelsListDelegate?.tunnelRemoved(at: index, tunnel: currentTunnel)
                 }
             }
-            for loadedTunnelProvider in loadedTunnelProviders {
+            for loadedTunnelProvider in loadedRegular {
                 if let matchingTunnel = self.tunnels.first(where: { loadedTunnelProvider.isEquivalentTo($0) }) {
                     matchingTunnel.tunnelProvider = loadedTunnelProvider
                     matchingTunnel.refreshStatus()
                 } else {
-                    // Tunnel was added outside the app
                     if let proto = loadedTunnelProvider.protocolConfiguration as? NETunnelProviderProtocol {
                         if proto.migrateConfigurationIfNeeded(called: loadedTunnelProvider.localizedDescription ?? "unknown") {
                             loadedTunnelProvider.saveToPreferences { _ in }
@@ -112,6 +137,25 @@ class TunnelsManager {
                     self.tunnels.append(tunnel)
                     self.tunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
                     self.tunnelsListDelegate?.tunnelAdded(at: self.tunnels.firstIndex(of: tunnel)!)
+                }
+            }
+
+            // Reconcile failover group tunnels
+            for (index, currentGroup) in self.failoverGroupTunnels.enumerated().reversed() {
+                if !loadedFailoverGroups.contains(where: { $0.isEquivalentToFailoverGroup(currentGroup) }) {
+                    self.failoverGroupTunnels.remove(at: index)
+                    self.failoverGroupListDelegate?.failoverGroupRemoved(at: index, tunnel: currentGroup)
+                }
+            }
+            for loadedProvider in loadedFailoverGroups {
+                if let matchingGroup = self.failoverGroupTunnels.first(where: { loadedProvider.isEquivalentToFailoverGroup($0) }) {
+                    matchingGroup.tunnelProvider = loadedProvider
+                    matchingGroup.refreshStatus()
+                } else {
+                    let groupTunnel = TunnelContainer(tunnel: loadedProvider)
+                    self.failoverGroupTunnels.append(groupTunnel)
+                    self.failoverGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
+                    self.failoverGroupListDelegate?.failoverGroupAdded(at: self.failoverGroupTunnels.firstIndex(of: groupTunnel)!)
                 }
             }
         }
@@ -124,7 +168,7 @@ class TunnelsManager {
             return
         }
 
-        if tunnels.contains(where: { $0.name == tunnelName }) {
+        if tunnels.contains(where: { $0.name == tunnelName }) || failoverGroupTunnels.contains(where: { $0.name == tunnelName }) {
             completionHandler(.failure(TunnelsManagerError.tunnelAlreadyExistsWithThatName))
             return
         }
@@ -135,7 +179,7 @@ class TunnelsManager {
 
         onDemandOption.apply(on: tunnelProviderManager)
 
-        let activeTunnel = tunnels.first { $0.status == .active || $0.status == .activating }
+        let activeTunnel = (tunnels + failoverGroupTunnels).first { $0.status == .active || $0.status == .activating }
 
         tunnelProviderManager.saveToPreferences { [weak self] error in
             if let error = error {
@@ -234,7 +278,7 @@ class TunnelsManager {
         let oldName = tunnelProviderManager.localizedDescription ?? ""
         let isNameChanged = tunnelName != oldName
         if isNameChanged {
-            guard !tunnels.contains(where: { $0.name == tunnelName }) else {
+            guard !tunnels.contains(where: { $0.name == tunnelName }) && !failoverGroupTunnels.contains(where: { $0.name == tunnelName }) else {
                 completionHandler(TunnelsManagerError.tunnelAlreadyExistsWithThatName)
                 return
             }
@@ -272,6 +316,11 @@ class TunnelsManager {
                 #endif
             }
             self.tunnelsListDelegate?.tunnelModified(at: self.tunnels.firstIndex(of: tunnel)!)
+
+            // Update any failover groups that reference this tunnel
+            if isTunnelConfigurationChanged || isNameChanged {
+                self.refreshFailoverGroupsContaining(tunnelName: tunnelName, oldName: isNameChanged ? oldName : nil)
+            }
 
             if isTunnelConfigurationChanged {
                 if tunnel.status == .active || tunnel.status == .activating || tunnel.status == .reasserting {
@@ -417,29 +466,47 @@ class TunnelsManager {
         return tunnels.first { $0.name == tunnelName }
     }
 
+    // MARK: - Failover Group Accessors
+
+    func numberOfFailoverGroups() -> Int {
+        return failoverGroupTunnels.count
+    }
+
+    func failoverGroup(at index: Int) -> TunnelContainer {
+        return failoverGroupTunnels[index]
+    }
+
+    func failoverGroupIndex(of tunnel: TunnelContainer) -> Int? {
+        return failoverGroupTunnels.firstIndex(of: tunnel)
+    }
+
+    private var allTunnels: [TunnelContainer] {
+        return tunnels + failoverGroupTunnels
+    }
+
     func waitingTunnel() -> TunnelContainer? {
-        return tunnels.first { $0.status == .waiting }
+        return allTunnels.first { $0.status == .waiting }
     }
 
     func tunnelInOperation() -> TunnelContainer? {
         if let waitingTunnelObject = waitingTunnel() {
             return waitingTunnelObject
         }
-        return tunnels.first { $0.status != .inactive }
+        return allTunnels.first { $0.status != .inactive }
     }
 
     func startActivation(of tunnel: TunnelContainer) {
-        guard tunnels.contains(tunnel) else { return } // Ensure it's not deleted
+        guard tunnels.contains(tunnel) || failoverGroupTunnels.contains(tunnel) else { return } // Ensure it's not deleted
         guard tunnel.status == .inactive else {
             activationDelegate?.tunnelActivationAttemptFailed(tunnel: tunnel, error: .tunnelIsNotInactive)
             return
         }
 
-        if let alreadyWaitingTunnel = tunnels.first(where: { $0.status == .waiting }) {
+        if let alreadyWaitingTunnel = allTunnels.first(where: { $0.status == .waiting }) {
             alreadyWaitingTunnel.status = .inactive
         }
 
-        if let tunnelInOperation = tunnels.first(where: { $0.status != .inactive }) {
+        if let tunnelInOperation = allTunnels.first(where: { $0.status != .inactive }) {
             wg_log(.info, message: "Tunnel '\(tunnel.name)' waiting for deactivation of '\(tunnelInOperation.name)'")
             tunnel.status = .waiting
             activateWaitingTunnelOnDeactivation(of: tunnelInOperation)
@@ -481,14 +548,14 @@ class TunnelsManager {
     }
 
     func refreshStatuses() {
-        tunnels.forEach { $0.refreshStatus() }
+        allTunnels.forEach { $0.refreshStatus() }
     }
 
     private func activateWaitingTunnelOnDeactivation(of tunnel: TunnelContainer) {
         waiteeObservationToken = tunnel.observe(\.status) { [weak self] tunnel, _ in
             guard let self = self else { return }
             if tunnel.status == .inactive {
-                if let waitingTunnel = self.tunnels.first(where: { $0.status == .waiting }) {
+                if let waitingTunnel = self.allTunnels.first(where: { $0.status == .waiting }) {
                     waitingTunnel.startActivation(activationDelegate: self.activationDelegate)
                 }
                 self.waiteeObservationToken = nil
@@ -501,7 +568,7 @@ class TunnelsManager {
             guard let self = self,
                 let session = statusChangeNotification.object as? NETunnelProviderSession,
                 let tunnelProvider = session.manager as? NETunnelProviderManager,
-                let tunnel = self.tunnels.first(where: { $0.tunnelProvider == tunnelProvider }) else { return }
+                let tunnel = self.allTunnels.first(where: { $0.tunnelProvider == tunnelProvider }) else { return }
 
             wg_log(.debug, message: "Tunnel '\(tunnel.name)' connection status changed to '\(tunnel.tunnelProvider.connection.status)'")
 
@@ -601,6 +668,14 @@ class TunnelContainer: NSObject {
             isActivateOnDemandEnabled = tunnelProvider.isOnDemandEnabled && tunnelProvider.isEnabled
             hasOnDemandRules = !(tunnelProvider.onDemandRules ?? []).isEmpty
         }
+    }
+
+    var isFailoverGroup: Bool {
+        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] != nil
+    }
+
+    var failoverGroupId: String? {
+        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] as? String
     }
 
     var tunnelConfiguration: TunnelConfiguration? {
@@ -746,5 +821,10 @@ extension NETunnelProviderManager {
 
     func isEquivalentTo(_ tunnel: TunnelContainer) -> Bool {
         return localizedDescription == tunnel.name && tunnelConfiguration == tunnel.tunnelConfiguration
+    }
+
+    func isEquivalentToFailoverGroup(_ tunnel: TunnelContainer) -> Bool {
+        let myGroupId = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] as? String
+        return myGroupId != nil && myGroupId == tunnel.failoverGroupId
     }
 }

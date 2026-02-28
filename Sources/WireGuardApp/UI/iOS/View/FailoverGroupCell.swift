@@ -2,8 +2,35 @@
 // Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
 
 import UIKit
+import NetworkExtension
 
 class FailoverGroupCell: UITableViewCell {
+
+    var tunnel: TunnelContainer? {
+        didSet {
+            nameLabel.text = tunnel?.name ?? ""
+            nameObservationToken = tunnel?.observe(\.name) { [weak self] tunnel, _ in
+                self?.nameLabel.text = tunnel.name
+            }
+            updateDetailLabel()
+            update(from: tunnel, animated: false)
+            statusObservationToken = tunnel?.observe(\.status) { [weak self] tunnel, _ in
+                self?.update(from: tunnel, animated: true)
+            }
+            isOnDemandEnabledObservationToken = tunnel?.observe(\.isActivateOnDemandEnabled) { [weak self] tunnel, _ in
+                self?.update(from: tunnel, animated: true)
+            }
+            hasOnDemandRulesObservationToken = tunnel?.observe(\.hasOnDemandRules) { [weak self] tunnel, _ in
+                self?.update(from: tunnel, animated: true)
+            }
+        }
+    }
+
+    var activeConfigName: String? {
+        didSet {
+            updateActiveConfigLabel()
+        }
+    }
 
     var onSwitchToggled: ((Bool) -> Void)?
 
@@ -50,6 +77,11 @@ class FailoverGroupCell: UITableViewCell {
         return indicator
     }()
 
+    private var nameObservationToken: NSKeyValueObservation?
+    private var statusObservationToken: NSKeyValueObservation?
+    private var isOnDemandEnabledObservationToken: NSKeyValueObservation?
+    private var hasOnDemandRulesObservationToken: NSKeyValueObservation?
+
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
 
@@ -92,47 +124,81 @@ class FailoverGroupCell: UITableViewCell {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        tunnel = nil
+        activeConfigName = nil
+        nameObservationToken = nil
+        statusObservationToken = nil
+        isOnDemandEnabledObservationToken = nil
+        hasOnDemandRulesObservationToken = nil
+    }
+
     @objc private func switchToggled() {
         onSwitchToggled?(statusSwitch.isOn)
     }
 
-    func configure(with group: FailoverGroup, isActive: Bool, activeConfigName: String?, isOnDemandEnabled: Bool, primaryTunnelStatus: TunnelStatus) {
-        nameLabel.text = group.name
+    private func updateDetailLabel() {
+        guard let tunnel = tunnel,
+              let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
+              let configNames = proto.providerConfiguration?["FailoverConfigNames"] as? [String] else {
+            detailLabel.text = ""
+            return
+        }
+        detailLabel.text = configNames.joined(separator: " → ")
+    }
 
-        let tunnelSummary = group.tunnelNames.joined(separator: " → ")
-        detailLabel.text = tunnelSummary
-
-        if isActive {
-            if primaryTunnelStatus == .active || primaryTunnelStatus == .activating {
-                if let activeName = activeConfigName {
-                    activeConfigLabel.text = "Active: \(activeName)"
-                } else {
-                    activeConfigLabel.text = "Active: \(group.tunnelNames.first ?? "")"
-                }
-                activeConfigLabel.isHidden = false
-            } else {
-                activeConfigLabel.isHidden = true
-            }
-            statusSwitch.setOn(true, animated: false)
-
-            if isOnDemandEnabled && !(primaryTunnelStatus == .active || primaryTunnelStatus == .activating) {
-                statusSwitch.onTintColor = .systemYellow
-            } else {
-                statusSwitch.onTintColor = .systemGreen
-            }
-
-            if isOnDemandEnabled {
-                onDemandLabel.text = tr("tunnelListCaptionOnDemand")
-                onDemandLabel.isHidden = false
-            } else {
-                onDemandLabel.text = ""
-                onDemandLabel.isHidden = true
-            }
+    private func updateActiveConfigLabel() {
+        guard let tunnel = tunnel else {
+            activeConfigLabel.isHidden = true
+            return
+        }
+        let status = tunnel.status
+        if status == .active || status == .activating, let activeName = activeConfigName {
+            activeConfigLabel.text = "Active: \(activeName)"
+            activeConfigLabel.isHidden = false
         } else {
             activeConfigLabel.isHidden = true
+        }
+    }
+
+    private func update(from tunnel: TunnelContainer?, animated: Bool) {
+        guard let tunnel = tunnel else {
+            statusSwitch.setOn(false, animated: animated)
+            statusSwitch.onTintColor = .systemGreen
             onDemandLabel.text = ""
             onDemandLabel.isHidden = true
-            statusSwitch.setOn(false, animated: false)
+            activeConfigLabel.isHidden = true
+            busyIndicator.stopAnimating()
+            return
         }
+
+        let status = tunnel.status
+        let isOnDemandEngaged = tunnel.isActivateOnDemandEnabled
+
+        let shouldSwitchBeOn = (status != .deactivating && status != .inactive) || isOnDemandEngaged
+        statusSwitch.setOn(shouldSwitchBeOn, animated: animated)
+
+        if isOnDemandEngaged && !(status == .activating || status == .active) {
+            statusSwitch.onTintColor = .systemYellow
+        } else {
+            statusSwitch.onTintColor = .systemGreen
+        }
+
+        if isOnDemandEngaged {
+            onDemandLabel.text = tr("tunnelListCaptionOnDemand")
+            onDemandLabel.isHidden = false
+        } else {
+            onDemandLabel.text = ""
+            onDemandLabel.isHidden = true
+        }
+
+        if status == .inactive || status == .active {
+            busyIndicator.stopAnimating()
+        } else {
+            busyIndicator.startAnimating()
+        }
+
+        updateActiveConfigLabel()
     }
 }

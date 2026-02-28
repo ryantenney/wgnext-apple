@@ -25,11 +25,6 @@ class TunnelListCell: UITableViewCell {
             }
         }
     }
-    var isInActiveFailoverGroup: Bool = false {
-        didSet {
-            update(from: tunnel, animated: false)
-        }
-    }
     var onSwitchToggled: ((Bool) -> Void)?
 
     let nameLabel: UILabel = {
@@ -111,7 +106,6 @@ class TunnelListCell: UITableViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        isInActiveFailoverGroup = false
         reset(animated: false)
     }
 
@@ -130,8 +124,7 @@ class TunnelListCell: UITableViewCell {
             return
         }
         let status = tunnel.status
-        // When managed by a failover group, treat on-demand as not engaged for display purposes
-        let isOnDemandEngaged = isInActiveFailoverGroup ? false : tunnel.isActivateOnDemandEnabled
+        let isOnDemandEngaged = tunnel.isActivateOnDemandEnabled
 
         let shouldSwitchBeOn = ((status != .deactivating && status != .inactive) || isOnDemandEngaged)
         statusSwitch.setOn(shouldSwitchBeOn, animated: true)
@@ -142,16 +135,7 @@ class TunnelListCell: UITableViewCell {
             statusSwitch.onTintColor = UIColor.systemGreen
         }
 
-        if isInActiveFailoverGroup {
-            // Tunnel is managed by the failover group — disable user interaction
-            onDemandLabel.text = ""
-            statusSwitch.isUserInteractionEnabled = false
-            if status == .inactive || status == .active {
-                busyIndicator.stopAnimating()
-            } else {
-                busyIndicator.startAnimating()
-            }
-        } else if tunnel.hasOnDemandRules {
+        if tunnel.hasOnDemandRules {
             onDemandLabel.text = isOnDemandEngaged ? tr("tunnelListCaptionOnDemand") : ""
             busyIndicator.stopAnimating()
             statusSwitch.isUserInteractionEnabled = true
@@ -164,7 +148,6 @@ class TunnelListCell: UITableViewCell {
             }
             statusSwitch.isUserInteractionEnabled = (status == .inactive || status == .active)
         }
-
     }
 
     private func reset(animated: Bool) {
