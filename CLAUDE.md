@@ -99,6 +99,26 @@ Wraps `NETunnelProviderManager` with observable `status` and `name` properties. 
 - Go bridge functions: `wgTurnOn`, `wgTurnOff`, `wgSetConfig`, `wgGetConfig`, `wgBumpSockets`
 - UAPI config: key=value newline-delimited format for communicating with wireguard-go
 
+## Connection Failover
+
+Failover groups allow ordered lists of tunnel configurations with automatic failover. See `DESIGN-connection-failover.md` for full documentation.
+
+### Key Files
+- `Sources/WireGuardKit/ConnectionHealthMonitor.swift` — failover engine (traffic monitoring, config switching, failback probing)
+- `Sources/WireGuardKit/FailoverSettings.swift` — settings model
+- `Sources/WireGuardApp/Tunnel/FailoverGroup.swift` — data model and persistence
+- `Sources/WireGuardApp/Tunnel/TunnelsManager+Failover.swift` — app-level CRUD, IPC, config sync
+
+### How It Works
+- Failover groups are `NETunnelProviderManager` instances with multiple wg-quick configs packed into `providerConfiguration`
+- `ConnectionHealthMonitor` runs in the Network Extension, polling tx/rx bytes to detect unhealthy connections
+- `WireGuardAdapter.update()` hot-swaps the entire tunnel config (keys, peers, endpoint) without tearing down the VPN
+- IPC message type 0 = UAPI config, type 1 = failover state + runtime stats
+- `TunnelsManager` maintains separate `tunnels` and `failoverGroupTunnels` arrays
+
+### Debug Testing
+Build with `FAILOVER_TESTING` flag (`fastlane ios device_failover`) to get Force Failover/Failback buttons in the detail view. All debug code is `#if FAILOVER_TESTING` gated.
+
 ## Testing
 
 - Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)
