@@ -12,6 +12,9 @@ class FailoverGroupDetailTableViewController: UITableViewController {
         case activeConnection
         case settings
         case onDemand
+        #if FAILOVER_TESTING
+        case debug
+        #endif
         case delete
     }
 
@@ -148,7 +151,13 @@ class FailoverGroupDetailTableViewController: UITableViewController {
         if tunnel.status == .active && !visibleActiveConnectionFields.isEmpty {
             s.append(.activeConnection)
         }
-        s.append(contentsOf: [.settings, .onDemand, .delete])
+        s.append(contentsOf: [.settings, .onDemand])
+        #if FAILOVER_TESTING
+        if tunnel.status == .active {
+            s.append(.debug)
+        }
+        #endif
+        s.append(.delete)
         sections = s
     }
 
@@ -326,6 +335,10 @@ extension FailoverGroupDetailTableViewController {
             return SettingsField.allCases.count
         case .onDemand:
             return onDemandViewModel.isWiFiInterfaceEnabled ? 2 : 1
+        #if FAILOVER_TESTING
+        case .debug:
+            return 2
+        #endif
         case .delete:
             return 1
         }
@@ -343,6 +356,10 @@ extension FailoverGroupDetailTableViewController {
             return "Failover Settings"
         case .onDemand:
             return tr("tunnelSectionTitleOnDemand")
+        #if FAILOVER_TESTING
+        case .debug:
+            return "Debug"
+        #endif
         case .delete:
             return nil
         }
@@ -360,6 +377,10 @@ extension FailoverGroupDetailTableViewController {
             return settingsCell(for: tableView, at: indexPath)
         case .onDemand:
             return onDemandCell(for: tableView, at: indexPath)
+        #if FAILOVER_TESTING
+        case .debug:
+            return debugCell(for: tableView, at: indexPath)
+        #endif
         case .delete:
             return deleteCell(for: tableView, at: indexPath)
         }
@@ -558,6 +579,40 @@ extension FailoverGroupDetailTableViewController {
             }
         }
     }
+
+    #if FAILOVER_TESTING
+    private func debugCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
+        if indexPath.row == 0 {
+            cell.buttonText = "Force Failover"
+            cell.hasDestructiveAction = false
+            cell.onTapped = { [weak self] in
+                guard let self = self else { return }
+                self.tunnelsManager.debugForceFailover(for: self.tunnel) { success in
+                    DispatchQueue.main.async {
+                        if success {
+                            self.pollFailoverState()
+                        }
+                    }
+                }
+            }
+        } else {
+            cell.buttonText = "Force Failback to Primary"
+            cell.hasDestructiveAction = false
+            cell.onTapped = { [weak self] in
+                guard let self = self else { return }
+                self.tunnelsManager.debugForceFailback(for: self.tunnel) { success in
+                    DispatchQueue.main.async {
+                        if success {
+                            self.pollFailoverState()
+                        }
+                    }
+                }
+            }
+        }
+        return cell
+    }
+    #endif
 
     private func deleteCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)

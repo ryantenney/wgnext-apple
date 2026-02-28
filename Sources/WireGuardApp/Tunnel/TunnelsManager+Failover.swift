@@ -301,4 +301,38 @@ extension TunnelsManager {
         let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
         return proto?.providerConfiguration?["FailoverGroupId"] as? String
     }
+
+    #if FAILOVER_TESTING
+    /// Debug: send a force-failover command to the network extension.
+    func debugForceFailover(for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
+        debugSendCommand(messageType: 2, for: tunnel, completionHandler: completionHandler)
+    }
+
+    /// Debug: send a force-failback command to the network extension.
+    func debugForceFailback(for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
+        debugSendCommand(messageType: 3, for: tunnel, completionHandler: completionHandler)
+    }
+
+    private func debugSendCommand(messageType: UInt8, for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
+        guard tunnel.status == .active,
+              let session = tunnel.tunnelProvider.connection as? NETunnelProviderSession else {
+            completionHandler(false)
+            return
+        }
+        do {
+            try session.sendProviderMessage(Data([messageType])) { responseData in
+                guard let data = responseData,
+                      let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let success = result["success"] as? Bool else {
+                    completionHandler(false)
+                    return
+                }
+                completionHandler(success)
+            }
+        } catch {
+            wg_log(.error, message: "Failover: debug command \(messageType) failed: \(error)")
+            completionHandler(false)
+        }
+    }
+    #endif
 }

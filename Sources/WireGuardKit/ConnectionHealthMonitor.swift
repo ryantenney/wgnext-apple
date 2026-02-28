@@ -446,4 +446,37 @@ public class ConnectionHealthMonitor {
         }
         return .infinity
     }
+
+    #if FAILOVER_TESTING
+    // MARK: - Debug: Force Failover
+
+    /// Force an immediate switch to the next configuration, bypassing health checks.
+    public func forceSwitch(completionHandler: @escaping (Bool) -> Void) {
+        workQueue.async {
+            guard self.isRunning else {
+                completionHandler(false)
+                return
+            }
+            let nextIndex = (self.activeIndex + 1) % self.configurations.count
+            let name = self.configurations[nextIndex].name ?? "config #\(nextIndex)"
+            self.logHandler(.verbose, "Failover: DEBUG force switch to '\(name)'")
+            self.switchToConfig(at: nextIndex)
+            completionHandler(true)
+        }
+    }
+
+    /// Force an immediate failback to the primary configuration (index 0).
+    public func forceFailback(completionHandler: @escaping (Bool) -> Void) {
+        workQueue.async {
+            guard self.isRunning, self.activeIndex != 0 else {
+                completionHandler(false)
+                return
+            }
+            let name = self.configurations[0].name ?? "config #0"
+            self.logHandler(.verbose, "Failover: DEBUG force failback to '\(name)'")
+            self.switchToConfig(at: 0)
+            completionHandler(true)
+        }
+    }
+    #endif
 }

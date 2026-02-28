@@ -62,6 +62,20 @@ platform :ios do
     install_on_device
   end
 
+  desc "Build and install on device with failover testing enabled"
+  lane :device_failover do
+    build_app(
+      project: XCODEPROJ,
+      scheme: "WireGuardiOS",
+      configuration: "Debug",
+      export_method: "development",
+      skip_profile_detection: true,
+      skip_package_dependencies_resolution: true,
+      xcargs: '-allowProvisioningUpdates SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG FAILOVER_TESTING"'
+    )
+    install_on_device
+  end
+
   desc "Build and upload to TestFlight"
   lane :beta do
     ensure_git_status_clean

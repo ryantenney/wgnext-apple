@@ -123,8 +123,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)? = nil) {
         guard let completionHandler = completionHandler else { return }
+        guard messageData.count >= 1 else {
+            completionHandler(nil)
+            return
+        }
 
-        if messageData.count == 1 && messageData[0] == 0 {
+        switch messageData[0] {
+        case 0:
             // Existing: get runtime configuration
             adapter.getRuntimeConfiguration { settings in
                 var data: Data?
@@ -133,7 +138,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 completionHandler(data)
             }
-        } else if messageData.count == 1 && messageData[0] == 1 {
+
+        case 1:
             // Failover: get current failover state + runtime stats
             var state: [String: Any] = [
                 "activeIndex": activeConfigIndex,
@@ -174,7 +180,32 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             group.notify(queue: .main) {
                 completionHandler(try? JSONSerialization.data(withJSONObject: state))
             }
-        } else {
+
+        #if FAILOVER_TESTING
+        case 2:
+            // Debug: force failover to next config
+            guard let monitor = adapter.healthMonitor else {
+                completionHandler(nil)
+                return
+            }
+            monitor.forceSwitch { success in
+                let result: [String: Any] = ["success": success]
+                completionHandler(try? JSONSerialization.data(withJSONObject: result))
+            }
+
+        case 3:
+            // Debug: force failback to primary
+            guard let monitor = adapter.healthMonitor else {
+                completionHandler(nil)
+                return
+            }
+            monitor.forceFailback { success in
+                let result: [String: Any] = ["success": success]
+                completionHandler(try? JSONSerialization.data(withJSONObject: result))
+            }
+        #endif
+
+        default:
             completionHandler(nil)
         }
     }
