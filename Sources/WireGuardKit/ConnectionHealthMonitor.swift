@@ -379,6 +379,29 @@ public class ConnectionHealthMonitor {
         }
     }
 
+    // MARK: - State Snapshot
+
+    /// Returns a snapshot of the health monitor's current state for IPC reporting.
+    /// Dispatches to the internal work queue for thread safety.
+    public func getStateSnapshot(completionHandler: @escaping ([String: Any]) -> Void) {
+        workQueue.async {
+            var state = [String: Any]()
+            if self.consecutiveCycles > 0 {
+                state["consecutiveCycles"] = self.consecutiveCycles
+            }
+            if self.isProbing {
+                state["isProbing"] = true
+            }
+            if self.lastSwitchTime != .distantPast {
+                state["lastSwitchTime"] = self.lastSwitchTime.timeIntervalSince1970
+            }
+            if let txWithoutRxSince = self.txWithoutRxSince {
+                state["txWithoutRxSince"] = txWithoutRxSince.timeIntervalSince1970
+            }
+            completionHandler(state)
+        }
+    }
+
     // MARK: - UAPI Parsing
 
     /// Parse total tx_bytes and rx_bytes from a UAPI runtime config string.

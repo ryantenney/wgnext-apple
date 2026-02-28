@@ -134,15 +134,46 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(data)
             }
         } else if messageData.count == 1 && messageData[0] == 1 {
-            // Failover: get current failover state
-            let state: [String: Any] = [
+            // Failover: get current failover state + runtime stats
+            var state: [String: Any] = [
                 "activeIndex": activeConfigIndex,
                 "activeConfig": failoverConfigNames.indices.contains(activeConfigIndex) ? failoverConfigNames[activeConfigIndex] : "unknown",
                 "totalConfigs": failoverConfigs.count,
                 "configNames": failoverConfigNames,
                 "isFailoverActive": failoverConfigs.count > 1
             ]
-            completionHandler(try? JSONSerialization.data(withJSONObject: state))
+
+            let group = DispatchGroup()
+
+            // Gather health monitor state
+            if let monitor = adapter.healthMonitor {
+                group.enter()
+                monitor.getStateSnapshot { snapshot in
+                    for (key, value) in snapshot {
+                        state[key] = value
+                    }
+                    group.leave()
+                }
+            }
+
+            // Gather runtime peer stats (tx/rx bytes, last handshake)
+            group.enter()
+            adapter.getRuntimeConfiguration { configString in
+                if let configString = configString {
+                    let (tx, rx) = ConnectionHealthMonitor.parseTxRxBytes(from: configString)
+                    state["txBytes"] = tx
+                    state["rxBytes"] = rx
+                    let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: configString)
+                    if handshakeAge != .infinity {
+                        state["lastHandshakeTime"] = Date().timeIntervalSince1970 - handshakeAge
+                    }
+                }
+                group.leave()
+            }
+
+            group.notify(queue: .main) {
+                completionHandler(try? JSONSerialization.data(withJSONObject: state))
+            }
         } else {
             completionHandler(nil)
         }

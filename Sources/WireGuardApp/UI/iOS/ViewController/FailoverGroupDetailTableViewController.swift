@@ -9,6 +9,7 @@ class FailoverGroupDetailTableViewController: UITableViewController {
     private enum Section {
         case status
         case tunnels
+        case activeConnection
         case settings
         case onDemand
         case delete
@@ -26,6 +27,28 @@ class FailoverGroupDetailTableViewController: UITableViewController {
             case .healthCheckInterval: return "Health Check Interval"
             case .failbackProbeInterval: return "Failback Probe Interval"
             case .autoFailback: return "Auto Failback"
+            }
+        }
+    }
+
+    private enum ActiveConnectionField {
+        case dataReceived
+        case dataSent
+        case lastHandshake
+        case failoverCount
+        case lastFailover
+        case healthStatus
+        case failbackProbe
+
+        var localizedUIString: String {
+            switch self {
+            case .dataReceived: return tr("tunnelPeerRxBytes")
+            case .dataSent: return tr("tunnelPeerTxBytes")
+            case .lastHandshake: return tr("tunnelPeerLastHandshakeTime")
+            case .failoverCount: return "Failover Count"
+            case .lastFailover: return "Last Failover"
+            case .healthStatus: return "Health"
+            case .failbackProbe: return "Failback Probe"
             }
         }
     }
@@ -48,6 +71,10 @@ class FailoverGroupDetailTableViewController: UITableViewController {
     private var activeConfigName: String?
     private var failoverStateTimer: Timer?
 
+    // Runtime state from the network extension
+    private var failoverState: [String: Any]?
+    private var visibleActiveConnectionFields: [ActiveConnectionField] = []
+
     init(tunnelsManager: TunnelsManager, tunnel: TunnelContainer) {
         self.tunnelsManager = tunnelsManager
         self.tunnel = tunnel
@@ -62,6 +89,9 @@ class FailoverGroupDetailTableViewController: UITableViewController {
             } else if tunnel.status == .inactive {
                 self.stopPollingFailoverState()
                 self.activeConfigName = nil
+                self.failoverState = nil
+                self.visibleActiveConnectionFields = []
+                self.loadSections()
                 self.tableView.reloadData()
             }
         }
@@ -114,7 +144,12 @@ class FailoverGroupDetailTableViewController: UITableViewController {
     }
 
     private func loadSections() {
-        sections = [.status, .tunnels, .settings, .onDemand, .delete]
+        var s: [Section] = [.status, .tunnels]
+        if tunnel.status == .active && !visibleActiveConnectionFields.isEmpty {
+            s.append(.activeConnection)
+        }
+        s.append(contentsOf: [.settings, .onDemand, .delete])
+        sections = s
     }
 
     @objc func editTapped() {
@@ -130,7 +165,7 @@ class FailoverGroupDetailTableViewController: UITableViewController {
     private func startPollingFailoverState() {
         pollFailoverState()
         stopPollingFailoverState()
-        failoverStateTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+        failoverStateTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.pollFailoverState()
         }
     }
@@ -144,15 +179,72 @@ class FailoverGroupDetailTableViewController: UITableViewController {
         tunnelsManager.getFailoverState(for: tunnel) { [weak self] state in
             guard let self = self, let state = state else { return }
             DispatchQueue.main.async {
+                self.failoverState = state
+
                 let newActiveConfig = state["activeConfig"] as? String
-                if newActiveConfig != self.activeConfigName {
-                    self.activeConfigName = newActiveConfig
-                    if let tunnelsSection = self.sections.firstIndex(of: .tunnels) {
-                        self.tableView.reloadSections(IndexSet(integer: tunnelsSection), with: .none)
+                let activeConfigChanged = (newActiveConfig != self.activeConfigName)
+                self.activeConfigName = newActiveConfig
+
+                let newVisibleFields = self.computeVisibleActiveConnectionFields(from: state)
+                let hadSection = self.sections.contains(.activeConnection)
+                let needsSection = !newVisibleFields.isEmpty && self.tunnel.status == .active
+                self.visibleActiveConnectionFields = newVisibleFields
+                self.loadSections()
+
+                if !hadSection && needsSection {
+                    // Section appeared
+                    if let idx = self.sections.firstIndex(of: .activeConnection) {
+                        self.tableView.insertSections(IndexSet(integer: idx), with: .automatic)
+                    }
+                    if activeConfigChanged, let tunnelsIdx = self.sections.firstIndex(of: .tunnels) {
+                        self.tableView.reloadSections(IndexSet(integer: tunnelsIdx), with: .none)
+                    }
+                } else if hadSection && !needsSection {
+                    // Section disappeared — reload all to be safe
+                    self.tableView.reloadData()
+                } else {
+                    // Reload changed sections
+                    var reloadSet = IndexSet()
+                    if needsSection, let idx = self.sections.firstIndex(of: .activeConnection) {
+                        reloadSet.insert(idx)
+                    }
+                    if activeConfigChanged, let idx = self.sections.firstIndex(of: .tunnels) {
+                        reloadSet.insert(idx)
+                    }
+                    if !reloadSet.isEmpty {
+                        self.tableView.reloadSections(reloadSet, with: .none)
                     }
                 }
             }
         }
+    }
+
+    private func computeVisibleActiveConnectionFields(from state: [String: Any]) -> [ActiveConnectionField] {
+        var fields = [ActiveConnectionField]()
+
+        if let rx = state["rxBytes"] as? UInt64, rx > 0 {
+            fields.append(.dataReceived)
+        }
+        if let tx = state["txBytes"] as? UInt64, tx > 0 {
+            fields.append(.dataSent)
+        }
+        if state["lastHandshakeTime"] as? Double != nil {
+            fields.append(.lastHandshake)
+        }
+        if let count = state["consecutiveCycles"] as? Int, count > 0 {
+            fields.append(.failoverCount)
+        }
+        if state["lastSwitchTime"] as? Double != nil {
+            fields.append(.lastFailover)
+        }
+        if state["txWithoutRxSince"] as? Double != nil {
+            fields.append(.healthStatus)
+        }
+        if let probing = state["isProbing"] as? Bool, probing {
+            fields.append(.failbackProbe)
+        }
+
+        return fields
     }
 
     // MARK: - On-Demand Updates
@@ -160,6 +252,42 @@ class FailoverGroupDetailTableViewController: UITableViewController {
     private func updateActivateOnDemandFields() {
         guard let onDemandSection = sections.firstIndex(of: .onDemand) else { return }
         tableView.reloadSections(IndexSet(integer: onDemandSection), with: .automatic)
+    }
+
+    // MARK: - Formatting Helpers
+
+    private func prettyBytes(_ bytes: UInt64) -> String {
+        switch bytes {
+        case 0..<1024:
+            return "\(bytes) B"
+        case 1024..<(1024 * 1024):
+            return String(format: "%.2f", Double(bytes) / 1024) + " KiB"
+        case (1024 * 1024)..<(1024 * 1024 * 1024):
+            return String(format: "%.2f", Double(bytes) / (1024 * 1024)) + " MiB"
+        case (1024 * 1024 * 1024)..<(1024 * 1024 * 1024 * 1024):
+            return String(format: "%.2f", Double(bytes) / (1024 * 1024 * 1024)) + " GiB"
+        default:
+            return String(format: "%.2f", Double(bytes) / (1024 * 1024 * 1024 * 1024)) + " TiB"
+        }
+    }
+
+    private func prettyTimeAgo(since date: Date) -> String {
+        let seconds = Int64(Date().timeIntervalSince(date))
+        guard seconds >= 0 else { return "the future" }
+        if seconds == 0 { return "now" }
+
+        var parts = [String]()
+        let days = seconds / 86400
+        let hours = (seconds % 86400) / 3600
+        let minutes = (seconds % 3600) / 60
+        let secs = seconds % 60
+
+        if days > 0 { parts.append("\(days) day\(days == 1 ? "" : "s")") }
+        if hours > 0 { parts.append("\(hours) hour\(hours == 1 ? "" : "s")") }
+        if minutes > 0 { parts.append("\(minutes) minute\(minutes == 1 ? "" : "s")") }
+        if secs > 0 || parts.isEmpty { parts.append("\(secs) second\(secs == 1 ? "" : "s")") }
+
+        return parts.prefix(2).joined(separator: ", ") + " ago"
     }
 }
 
@@ -192,6 +320,8 @@ extension FailoverGroupDetailTableViewController {
             return 1
         case .tunnels:
             return tunnelNames.count
+        case .activeConnection:
+            return visibleActiveConnectionFields.count
         case .settings:
             return SettingsField.allCases.count
         case .onDemand:
@@ -207,6 +337,8 @@ extension FailoverGroupDetailTableViewController {
             return tr("tunnelSectionTitleStatus")
         case .tunnels:
             return "Connections"
+        case .activeConnection:
+            return "Active Connection"
         case .settings:
             return "Failover Settings"
         case .onDemand:
@@ -222,6 +354,8 @@ extension FailoverGroupDetailTableViewController {
             return statusCell(for: tableView, at: indexPath)
         case .tunnels:
             return tunnelCell(for: tableView, at: indexPath)
+        case .activeConnection:
+            return activeConnectionCell(for: tableView, at: indexPath)
         case .settings:
             return settingsCell(for: tableView, at: indexPath)
         case .onDemand:
@@ -325,6 +459,61 @@ extension FailoverGroupDetailTableViewController {
         cell.value = detail
         cell.copyableGesture = false
         return cell
+    }
+
+    private func activeConnectionCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let field = visibleActiveConnectionFields[indexPath.row]
+        let cell: KeyValueCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.key = field.localizedUIString
+        cell.value = activeConnectionValue(for: field)
+        cell.copyableGesture = false
+        return cell
+    }
+
+    private func activeConnectionValue(for field: ActiveConnectionField) -> String {
+        guard let state = failoverState else { return "" }
+
+        switch field {
+        case .dataReceived:
+            if let rx = state["rxBytes"] as? UInt64 {
+                return prettyBytes(rx)
+            }
+            return ""
+
+        case .dataSent:
+            if let tx = state["txBytes"] as? UInt64 {
+                return prettyBytes(tx)
+            }
+            return ""
+
+        case .lastHandshake:
+            if let timestamp = state["lastHandshakeTime"] as? Double {
+                return prettyTimeAgo(since: Date(timeIntervalSince1970: timestamp))
+            }
+            return ""
+
+        case .failoverCount:
+            if let count = state["consecutiveCycles"] as? Int {
+                return "\(count)"
+            }
+            return ""
+
+        case .lastFailover:
+            if let timestamp = state["lastSwitchTime"] as? Double {
+                return prettyTimeAgo(since: Date(timeIntervalSince1970: timestamp))
+            }
+            return ""
+
+        case .healthStatus:
+            if let since = state["txWithoutRxSince"] as? Double {
+                let duration = Int(Date().timeIntervalSince1970 - since)
+                return "Unhealthy (tx without rx for \(duration)s)"
+            }
+            return "Healthy"
+
+        case .failbackProbe:
+            return "Probing primary..."
+        }
     }
 
     private func settingsCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
