@@ -1,0 +1,76 @@
+# Relicensing Instructions: wireguard-apple Fork → GPL-3.0
+
+## Background
+
+This project is a fork of [wireguard-apple](https://git.zx2c4.com/wireguard-apple/) (MIT-licensed) and depends on [wireguard-go](https://github.com/WireGuard/wireguard-go) (also MIT-licensed). We are distributing the derivative work under GPL-3.0-or-later, which is permitted by the MIT license's sublicensing grant.
+
+The original WireGuard code remains the property of WireGuard LLC / Jason A. Donenfeld. We are not relicensing their code — we are distributing the combined derivative work under GPL-3.0.
+
+## Tasks
+
+### 1. LICENSE Files
+
+- Replace the top-level `LICENSE` file with the full text of GPL-3.0. You can obtain it from: https://www.gnu.org/licenses/gpl-3.0.txt
+- Preserve the original MIT license as `LICENSE.MIT` in the repo root (copy the existing MIT license file before replacing it).
+- Add a `NOTICE` file in the repo root with the following content:
+
+```
+This project is a fork of wireguard-apple, originally developed by
+Jason A. Donenfeld / WireGuard LLC under the MIT license.
+
+The original MIT license is preserved in LICENSE.MIT.
+
+This derivative work is licensed under the GNU General Public License
+version 3 or later (GPL-3.0-or-later). See LICENSE for details.
+```
+
+### 2. Copyright Headers — Modified Files
+
+For every file that has been modified from the upstream wireguard-apple source, update the header to:
+
+```
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
+// Copyright © 2026 Ryan Tenney.
+```
+
+- The SPDX identifier should replace any existing `SPDX-License-Identifier` line (some files may have `MIT` or `GPL-2.0`).
+- Preserve the original WireGuard LLC copyright line exactly as-is.
+- Add Ryan Tenney's copyright line after it.
+- Adapt comment syntax to match the file type (`//`, `#`, `/* */`, etc.).
+
+### 3. Copyright Headers — Unmodified Files
+
+**Do not touch these.** Leave their existing copyright headers and SPDX identifiers as-is. They remain MIT-licensed code by WireGuard LLC.
+
+### 4. Copyright Headers — New Files (written entirely by Ryan Tenney)
+
+For any files that are entirely new (not derived from upstream), use:
+
+```
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Ryan Tenney.
+```
+
+### 5. README Update
+
+Add a section to the README (e.g., "License" or "Acknowledgments") that includes:
+
+```
+## License
+
+This project is a fork of [wireguard-apple](https://git.zx2c4.com/wireguard-apple/),
+originally developed by Jason A. Donenfeld / WireGuard LLC under the MIT license.
+
+This derivative work is licensed under the
+[GNU General Public License v3.0 or later](LICENSE).
+The original MIT license is preserved in [LICENSE.MIT](LICENSE.MIT).
+```
+
+## Rules
+
+- NEVER remove or alter existing WireGuard LLC copyright notices.
+- NEVER add Ryan Tenney's copyright to files that have not been modified.
+- NEVER change the license identifier on unmodified files.
+- Preserve the original MIT license text in LICENSE.MIT exactly as-is.
+- Use `GPL-3.0-or-later` (not `GPL-3.0-only`) as the SPDX identifier to allow future version flexibility.

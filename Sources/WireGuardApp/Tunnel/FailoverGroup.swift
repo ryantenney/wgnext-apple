@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Ryan Tenney.
 
 import Foundation
 
