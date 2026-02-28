@@ -349,6 +349,18 @@ class TunnelsManager {
     }
 
     func remove(tunnel: TunnelContainer, completionHandler: @escaping (TunnelsManagerError?) -> Void) {
+        // Check if tunnel is referenced by any failover group
+        let referencingGroups = failoverGroupTunnels.filter { group in
+            let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
+            let names = proto?.providerConfiguration?["FailoverConfigNames"] as? [String] ?? []
+            return names.contains(tunnel.name)
+        }
+        if !referencingGroups.isEmpty {
+            let groupNames = referencingGroups.map { $0.name }.joined(separator: ", ")
+            completionHandler(TunnelsManagerError.tunnelIsPartOfFailoverGroup(groupNames: groupNames))
+            return
+        }
+
         let tunnelProviderManager = tunnel.tunnelProvider
         #if os(macOS)
         if tunnel.isTunnelAvailableToUser {
@@ -378,6 +390,20 @@ class TunnelsManager {
     }
 
     func removeMultiple(tunnels: [TunnelContainer], completionHandler: @escaping (TunnelsManagerError?) -> Void) {
+        // Check if any tunnel is referenced by a failover group before deleting anything
+        for tunnel in tunnels {
+            let referencingGroups = failoverGroupTunnels.filter { group in
+                let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
+                let names = proto?.providerConfiguration?["FailoverConfigNames"] as? [String] ?? []
+                return names.contains(tunnel.name)
+            }
+            if !referencingGroups.isEmpty {
+                let groupNames = referencingGroups.map { $0.name }.joined(separator: ", ")
+                completionHandler(TunnelsManagerError.tunnelIsPartOfFailoverGroup(groupNames: groupNames))
+                return
+            }
+        }
+
         // Temporarily pause observation of changes to VPN configurations to prevent the feedback
         // loop that causes `reload()` to be called for each removed tunnel, which significantly
         // impacts performance.

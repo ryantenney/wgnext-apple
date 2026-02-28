@@ -10,6 +10,7 @@ enum TunnelsManagerError: WireGuardAppError {
     case systemErrorOnAddTunnel(systemError: Error)
     case systemErrorOnModifyTunnel(systemError: Error)
     case systemErrorOnRemoveTunnel(systemError: Error)
+    case tunnelIsPartOfFailoverGroup(groupNames: String)
 
     var alertText: AlertText {
         switch self {
@@ -25,6 +26,9 @@ enum TunnelsManagerError: WireGuardAppError {
             return (tr("alertSystemErrorOnModifyTunnelTitle"), systemError.localizedUIString)
         case .systemErrorOnRemoveTunnel(let systemError):
             return (tr("alertSystemErrorOnRemoveTunnelTitle"), systemError.localizedUIString)
+        case .tunnelIsPartOfFailoverGroup(let groupNames):
+            return (tr("alertCannotRemoveTunnelInFailoverGroupTitle"),
+                    tr(format: "alertCannotRemoveTunnelInFailoverGroupMessage (%@)", groupNames))
         }
     }
 }

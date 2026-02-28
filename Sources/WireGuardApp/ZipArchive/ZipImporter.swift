@@ -3,8 +3,13 @@
 
 import Foundation
 
+struct ZipImportResult {
+    var tunnelConfigurations: [TunnelConfiguration?]
+    var failoverGroups: [FailoverGroupConfig]
+}
+
 class ZipImporter {
-    static func importConfigFiles(from url: URL, completion: @escaping (Result<[TunnelConfiguration?], ZipArchiveError>) -> Void) {
+    static func importConfigFiles(from url: URL, completion: @escaping (Result<ZipImportResult, ZipArchiveError>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             var unarchivedFiles: [(fileBaseName: String, contents: Data)]
             do {
@@ -29,17 +34,44 @@ class ZipImporter {
                 fatalError()
             }
 
-            unarchivedFiles.sort { TunnelsManager.tunnelNameIsLessThan($0.fileBaseName, $1.fileBaseName) }
-            var configs: [TunnelConfiguration?] = Array(repeating: nil, count: unarchivedFiles.count)
-            for (index, file) in unarchivedFiles.enumerated() {
-                if index > 0 && file == unarchivedFiles[index - 1] {
+            // Separate failover group configs from regular tunnel configs
+            let failoverGroupSuffix = ".failovergroup"
+            var tunnelFiles = [(fileBaseName: String, contents: Data)]()
+            var failoverGroupFiles = [(name: String, contents: Data)]()
+
+            for file in unarchivedFiles {
+                if file.fileBaseName.lowercased().hasSuffix(failoverGroupSuffix) {
+                    let groupName = String(file.fileBaseName.dropLast(failoverGroupSuffix.count))
+                    if !groupName.isEmpty {
+                        failoverGroupFiles.append((name: groupName, contents: file.contents))
+                    }
+                } else {
+                    tunnelFiles.append(file)
+                }
+            }
+
+            // Parse tunnel configs
+            tunnelFiles.sort { TunnelsManager.tunnelNameIsLessThan($0.fileBaseName, $1.fileBaseName) }
+            var configs: [TunnelConfiguration?] = Array(repeating: nil, count: tunnelFiles.count)
+            for (index, file) in tunnelFiles.enumerated() {
+                if index > 0 && file == tunnelFiles[index - 1] {
                     continue
                 }
                 guard let fileContents = String(data: file.contents, encoding: .utf8) else { continue }
                 guard let tunnelConfig = try? TunnelConfiguration(fromWgQuickConfig: fileContents, called: file.fileBaseName) else { continue }
                 configs[index] = tunnelConfig
             }
-            DispatchQueue.main.async { completion(.success(configs)) }
+
+            // Parse failover group configs
+            var failoverGroups = [FailoverGroupConfig]()
+            for file in failoverGroupFiles {
+                guard let fileContents = String(data: file.contents, encoding: .utf8) else { continue }
+                guard let groupConfig = try? FailoverGroupConfig(from: fileContents, called: file.name) else { continue }
+                failoverGroups.append(groupConfig)
+            }
+
+            let result = ZipImportResult(tunnelConfigurations: configs, failoverGroups: failoverGroups)
+            DispatchQueue.main.async { completion(.success(result)) }
         }
     }
 }

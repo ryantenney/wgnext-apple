@@ -33,6 +33,7 @@
 
 "alertImportedFromZipTitle (%d)" = "Created %d tunnels";
 "alertImportedFromZipMessage (%1$d of %2$d)" = "Created %1$d of %2$d tunnels from zip archive";
+"alertImportedFailoverGroupsMessage (%1$d of %2$d)" = "Created %1$d of %2$d failover groups";
 
 "alertBadConfigImportTitle" = "Unable to import tunnel";
 "alertBadConfigImportMessage (%@)" = "The file ‘%@’ does not contain a valid WireGuard configuration";
@@ -285,6 +286,8 @@
 "alertSystemErrorOnAddTunnelTitle" = "Unable to create tunnel";
 "alertSystemErrorOnModifyTunnelTitle" = "Unable to modify tunnel";
 "alertSystemErrorOnRemoveTunnelTitle" = "Unable to remove tunnel";
+"alertCannotRemoveTunnelInFailoverGroupTitle" = "Tunnel in use";
+"alertCannotRemoveTunnelInFailoverGroupMessage (%@)" = "This tunnel is referenced by failover group(s): %@. Remove it from the group first.";
 
 /* The alert message for this alert shall include
  one of the alertSystemErrorMessage* listed further down */

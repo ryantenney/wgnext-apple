@@ -2,6 +2,7 @@
 // Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
 
 import Cocoa
+import NetworkExtension
 
 protocol TunnelsListTableViewControllerDelegate: AnyObject {
     func tunnelsSelected(tunnelIndices: [Int])
@@ -218,7 +219,19 @@ class TunnelsListTableViewController: NSViewController {
                 guard let destinationURL = savePanel.url else { return }
                 let count = tunnelsManager.numberOfTunnels()
                 let tunnelConfigurations = (0 ..< count).compactMap { tunnelsManager.tunnel(at: $0).tunnelConfiguration }
-                ZipExporter.exportConfigFiles(tunnelConfigurations: tunnelConfigurations, to: destinationURL) { [weak self] error in
+
+                // Gather failover group configs for export
+                var failoverGroups = [(name: String, config: String)]()
+                for index in 0 ..< tunnelsManager.numberOfFailoverGroups() {
+                    let groupTunnel = tunnelsManager.failoverGroup(at: index)
+                    if let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
+                       let providerConfig = proto.providerConfiguration,
+                       let configString = FailoverGroupConfig.configString(from: providerConfig) {
+                        failoverGroups.append((name: groupTunnel.name, config: configString))
+                    }
+                }
+
+                ZipExporter.exportConfigFiles(tunnelConfigurations: tunnelConfigurations, failoverGroups: failoverGroups, to: destinationURL) { [weak self] error in
                     if let error = error {
                         ErrorPresenter.showErrorAlert(error: error, from: self)
                         return

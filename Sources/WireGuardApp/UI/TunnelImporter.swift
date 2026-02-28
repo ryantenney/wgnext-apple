@@ -11,6 +11,7 @@ class TunnelImporter {
         }
         let dispatchGroup = DispatchGroup()
         var configs = [TunnelConfiguration?]()
+        var failoverGroups = [FailoverGroupConfig]()
         var lastFileImportErrorText: (title: String, message: String)?
         for url in urls {
             if url.pathExtension.lowercased() == "zip" {
@@ -19,8 +20,9 @@ class TunnelImporter {
                     switch result {
                     case .failure(let error):
                         lastFileImportErrorText = error.alertText
-                    case .success(let configsInZip):
-                        configs.append(contentsOf: configsInZip)
+                    case .success(let importResult):
+                        configs.append(contentsOf: importResult.tunnelConfigurations)
+                        failoverGroups.append(contentsOf: importResult.failoverGroups)
                     }
                     dispatchGroup.leave()
                 }
@@ -67,26 +69,69 @@ class TunnelImporter {
         }
         dispatchGroup.notify(queue: .main) {
             tunnelsManager.addMultiple(tunnelConfigurations: configs.compactMap { $0 }) { numberSuccessful, lastAddError in
-                if !configs.isEmpty && numberSuccessful == configs.count {
-                    completionHandler?()
-                    return
-                }
-                let alertText: (title: String, message: String)?
-                if urls.count == 1 {
-                    if urls.first!.pathExtension.lowercased() == "zip" && !configs.isEmpty {
-                        alertText = (title: tr(format: "alertImportedFromZipTitle (%d)", numberSuccessful),
-                                     message: tr(format: "alertImportedFromZipMessage (%1$d of %2$d)", numberSuccessful, configs.count))
-                    } else {
-                        alertText = lastFileImportErrorText ?? lastAddError?.alertText
+                // After tunnels are imported, import failover groups
+                importFailoverGroups(failoverGroups, into: tunnelsManager) { groupsImported in
+                    if !configs.isEmpty && numberSuccessful == configs.count && (failoverGroups.isEmpty || groupsImported == failoverGroups.count) {
+                        completionHandler?()
+                        return
                     }
-                } else {
-                    alertText = (title: tr(format: "alertImportedFromMultipleFilesTitle (%d)", numberSuccessful),
-                                 message: tr(format: "alertImportedFromMultipleFilesMessage (%1$d of %2$d)", numberSuccessful, configs.count))
+                    let alertText: (title: String, message: String)?
+                    if urls.count == 1 {
+                        if urls.first!.pathExtension.lowercased() == "zip" && !configs.isEmpty {
+                            var message = tr(format: "alertImportedFromZipMessage (%1$d of %2$d)", numberSuccessful, configs.count)
+                            if !failoverGroups.isEmpty {
+                                message += "\n" + tr(format: "alertImportedFailoverGroupsMessage (%1$d of %2$d)", groupsImported, failoverGroups.count)
+                            }
+                            alertText = (title: tr(format: "alertImportedFromZipTitle (%d)", numberSuccessful),
+                                         message: message)
+                        } else {
+                            alertText = lastFileImportErrorText ?? lastAddError?.alertText
+                        }
+                    } else {
+                        alertText = (title: tr(format: "alertImportedFromMultipleFilesTitle (%d)", numberSuccessful),
+                                     message: tr(format: "alertImportedFromMultipleFilesMessage (%1$d of %2$d)", numberSuccessful, configs.count))
+                    }
+                    if let alertText = alertText {
+                        errorPresenterType.showErrorAlert(title: alertText.title, message: alertText.message, from: sourceVC, onPresented: completionHandler)
+                    } else {
+                        completionHandler?()
+                    }
                 }
-                if let alertText = alertText {
-                    errorPresenterType.showErrorAlert(title: alertText.title, message: alertText.message, from: sourceVC, onPresented: completionHandler)
-                } else {
-                    completionHandler?()
+            }
+        }
+    }
+
+    private static func importFailoverGroups(_ groups: [FailoverGroupConfig], into tunnelsManager: TunnelsManager, completionHandler: @escaping (Int) -> Void) {
+        guard !groups.isEmpty else {
+            completionHandler(0)
+            return
+        }
+        var successCount = 0
+        var remaining = groups.count
+
+        for group in groups {
+            let settings = FailoverSettings(
+                trafficTimeout: group.trafficTimeout ?? 30,
+                healthCheckInterval: group.healthCheckInterval ?? 10,
+                failbackProbeInterval: group.failbackProbeInterval ?? 300,
+                autoFailback: group.autoFailback ?? true
+            )
+
+            tunnelsManager.addFailoverGroup(
+                name: group.name,
+                tunnelNames: group.tunnelNames,
+                settings: settings,
+                onDemandActivation: OnDemandActivation()
+            ) { result in
+                switch result {
+                case .success:
+                    successCount += 1
+                case .failure(let error):
+                    wg_log(.error, message: "Failed to import failover group '\(group.name)': \(error)")
+                }
+                remaining -= 1
+                if remaining == 0 {
+                    completionHandler(successCount)
                 }
             }
         }

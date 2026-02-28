@@ -220,6 +220,8 @@
 		BB3D4E01293FA0000000000D /* FailoverGroupCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000005 /* FailoverGroupCell.swift */; };
 		BB3D4E01293FA0000000000E /* FailoverGroupEditTableViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000006 /* FailoverGroupEditTableViewController.swift */; };
 		BB3D4E01293FA0000000000F /* FailoverGroupDetailTableViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000007 /* FailoverGroupDetailTableViewController.swift */; };
+		BB3D4E01293FA00000000010 /* FailoverGroupConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000008 /* FailoverGroupConfig.swift */; };
+		BB3D4E01293FA00000000011 /* FailoverGroupConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000008 /* FailoverGroupConfig.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -462,6 +464,7 @@
 		AA1B2C01293FA00000000005 /* FailoverGroupCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupCell.swift; sourceTree = "<group>"; };
 		AA1B2C01293FA00000000006 /* FailoverGroupEditTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupEditTableViewController.swift; sourceTree = "<group>"; };
 		AA1B2C01293FA00000000007 /* FailoverGroupDetailTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupDetailTableViewController.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA00000000008 /* FailoverGroupConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupConfig.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -683,6 +686,7 @@
 				6FB1017821C57DE600766195 /* MockTunnels.swift */,
 				6F7F7E5E21C7D74B00527607 /* TunnelErrors.swift */,
 				AA1B2C01293FA00000000004 /* TunnelsManager+Failover.swift */,
+				AA1B2C01293FA00000000008 /* FailoverGroupConfig.swift */,
 			);
 			path = Tunnel;
 			sourceTree = "<group>";
@@ -1399,6 +1403,7 @@
 				BB3D4E01293FA00000000007 /* ConnectionHealthMonitor.swift in Sources */,
 				BB3D4E01293FA0000000000A /* FailoverGroup.swift in Sources */,
 				BB3D4E01293FA0000000000C /* TunnelsManager+Failover.swift in Sources */,
+				BB3D4E01293FA00000000011 /* FailoverGroupConfig.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1505,6 +1510,7 @@
 				BB3D4E01293FA00000000005 /* ConnectionHealthMonitor.swift in Sources */,
 				BB3D4E01293FA00000000009 /* FailoverGroup.swift in Sources */,
 				BB3D4E01293FA0000000000B /* TunnelsManager+Failover.swift in Sources */,
+				BB3D4E01293FA00000000010 /* FailoverGroupConfig.swift in Sources */,
 				BB3D4E01293FA0000000000D /* FailoverGroupCell.swift in Sources */,
 				BB3D4E01293FA0000000000E /* FailoverGroupEditTableViewController.swift in Sources */,
 				BB3D4E01293FA0000000000F /* FailoverGroupDetailTableViewController.swift in Sources */,
