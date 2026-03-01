@@ -222,6 +222,9 @@
 		BB3D4E01293FA0000000000F /* FailoverGroupDetailTableViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000007 /* FailoverGroupDetailTableViewController.swift */; };
 		BB3D4E01293FA00000000010 /* FailoverGroupConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000008 /* FailoverGroupConfig.swift */; };
 		BB3D4E01293FA00000000011 /* FailoverGroupConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000008 /* FailoverGroupConfig.swift */; };
+		BB3D4E01293FA00000000012 /* FailoverGroupListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000009 /* FailoverGroupListRow.swift */; };
+		BB3D4E01293FA00000000013 /* FailoverGroupDetailTableViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA0000000000A /* FailoverGroupDetailTableViewController.swift */; };
+		BB3D4E01293FA00000000014 /* FailoverGroupEditViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA0000000000B /* FailoverGroupEditViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -465,6 +468,9 @@
 		AA1B2C01293FA00000000006 /* FailoverGroupEditTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupEditTableViewController.swift; sourceTree = "<group>"; };
 		AA1B2C01293FA00000000007 /* FailoverGroupDetailTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupDetailTableViewController.swift; sourceTree = "<group>"; };
 		AA1B2C01293FA00000000008 /* FailoverGroupConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupConfig.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA00000000009 /* FailoverGroupListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupListRow.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA0000000000A /* FailoverGroupDetailTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupDetailTableViewController.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA0000000000B /* FailoverGroupEditViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupEditViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -590,6 +596,7 @@
 				6FB17945222FD5960018AE71 /* OnDemandWiFiControls.swift */,
 				6FDB6D14224CB2CE00EE4BC3 /* LogViewCell.swift */,
 				6F1075632258AE9800D78929 /* DeleteTunnelsConfirmationAlert.swift */,
+				AA1B2C01293FA00000000009 /* FailoverGroupListRow.swift */,
 			);
 			path = View;
 			sourceTree = "<group>";
@@ -746,6 +753,8 @@
 				6FCD99B021E0EDA900BA4C82 /* TunnelEditViewController.swift */,
 				6FDB6D12224A15BE00EE4BC3 /* LogViewController.swift */,
 				6FADE96A2254A6C200B838A4 /* UnusableTunnelDetailViewController.swift */,
+				AA1B2C01293FA0000000000A /* FailoverGroupDetailTableViewController.swift */,
+				AA1B2C01293FA0000000000B /* FailoverGroupEditViewController.swift */,
 			);
 			path = ViewController;
 			sourceTree = "<group>";
@@ -1404,6 +1413,9 @@
 				BB3D4E01293FA0000000000A /* FailoverGroup.swift in Sources */,
 				BB3D4E01293FA0000000000C /* TunnelsManager+Failover.swift in Sources */,
 				BB3D4E01293FA00000000011 /* FailoverGroupConfig.swift in Sources */,
+				BB3D4E01293FA00000000012 /* FailoverGroupListRow.swift in Sources */,
+				BB3D4E01293FA00000000013 /* FailoverGroupDetailTableViewController.swift in Sources */,
+				BB3D4E01293FA00000000014 /* FailoverGroupEditViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

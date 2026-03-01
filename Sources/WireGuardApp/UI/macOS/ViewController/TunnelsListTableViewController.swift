@@ -7,6 +7,7 @@ import NetworkExtension
 
 protocol TunnelsListTableViewControllerDelegate: AnyObject {
     func tunnelsSelected(tunnelIndices: [Int])
+    func failoverGroupSelected(at index: Int)
     func tunnelsListEmpty()
 }
 
@@ -15,6 +16,10 @@ class TunnelsListTableViewController: NSViewController {
     let tunnelsManager: TunnelsManager
     weak var delegate: TunnelsListTableViewControllerDelegate?
     var isRemovingTunnelsFromWithinTheApp = false
+
+    private var failoverGroupCount: Int {
+        return tunnelsManager.numberOfFailoverGroups()
+    }
 
     let tableView: NSTableView = {
         let tableView = NSTableView()
@@ -32,6 +37,7 @@ class TunnelsListTableViewController: NSViewController {
         let menu = NSMenu()
         menu.addItem(imageItem)
         menu.addItem(withTitle: tr("macMenuAddEmptyTunnel"), action: #selector(handleAddEmptyTunnelAction), keyEquivalent: "n")
+        menu.addItem(withTitle: "Create Failover Group", action: #selector(handleAddFailoverGroupAction), keyEquivalent: "")
         menu.addItem(withTitle: tr("macMenuImportTunnels"), action: #selector(handleImportTunnelAction), keyEquivalent: "o")
         menu.autoenablesItems = false
 
@@ -82,7 +88,7 @@ class TunnelsListTableViewController: NSViewController {
 
         tableView.doubleAction = #selector(listDoubleClicked(sender:))
 
-        let isSelected = selectTunnelInOperation() || selectTunnel(at: 0)
+        let isSelected = selectTunnelInOperation() || selectRow(at: 0)
         if !isSelected {
             delegate?.tunnelsListEmpty()
         }
@@ -147,8 +153,14 @@ class TunnelsListTableViewController: NSViewController {
 
     @discardableResult
     func selectTunnelInOperation() -> Bool {
-        if let currentTunnel = tunnelsManager.tunnelInOperation(), let indexToSelect = tunnelsManager.index(of: currentTunnel) {
-            return selectTunnel(at: indexToSelect)
+        if let currentTunnel = tunnelsManager.tunnelInOperation() {
+            // Check failover groups first
+            if let groupIndex = tunnelsManager.failoverGroupIndex(of: currentTunnel) {
+                return selectRow(at: groupIndex)
+            }
+            if let tunnelIndex = tunnelsManager.index(of: currentTunnel) {
+                return selectRow(at: failoverGroupCount + tunnelIndex)
+            }
         }
         return false
     }
@@ -159,14 +171,47 @@ class TunnelsListTableViewController: NSViewController {
         presentAsSheet(tunnelEditVC)
     }
 
+    @objc func handleAddFailoverGroupAction() {
+        let editVC = FailoverGroupEditViewController(tunnelsManager: tunnelsManager, tunnel: nil)
+        editVC.delegate = self
+        presentAsSheet(editVC)
+    }
+
     @objc func handleImportTunnelAction() {
         ImportPanelPresenter.presentImportPanel(tunnelsManager: tunnelsManager, sourceVC: self)
     }
 
     @objc func handleRemoveTunnelAction() {
         guard let window = view.window else { return }
+        let selectedRows = tableView.selectedRowIndexes.sorted()
+        guard !selectedRows.isEmpty else { return }
 
-        let selectedTunnelIndices = tableView.selectedRowIndexes.sorted().filter { $0 >= 0 && $0 < tunnelsManager.numberOfTunnels() }
+        // Separate into failover group rows and tunnel rows
+        let groupIndices = selectedRows.filter { $0 < failoverGroupCount }
+        let tunnelIndices = selectedRows.filter { $0 >= failoverGroupCount }.map { $0 - failoverGroupCount }
+
+        // Handle failover group deletion
+        if !groupIndices.isEmpty && tunnelIndices.isEmpty {
+            let groupIndex = groupIndices.first!
+            let groupTunnel = tunnelsManager.failoverGroup(at: groupIndex)
+            let alert = DeleteTunnelsConfirmationAlert()
+            alert.messageText = "Are you sure you want to delete the failover group '\(groupTunnel.name)'?"
+            alert.informativeText = "This won't delete the individual tunnels."
+            alert.onDeleteClicked = { [weak self] completion in
+                guard let self = self else { return }
+                self.tunnelsManager.removeFailoverGroup(tunnel: groupTunnel) { error in
+                    defer { completion() }
+                    if let error = error {
+                        ErrorPresenter.showErrorAlert(error: error, from: self)
+                    }
+                }
+            }
+            alert.beginSheetModal(for: window)
+            return
+        }
+
+        // Handle tunnel deletion (original logic, adjusted for offset)
+        let selectedTunnelIndices = tunnelIndices.filter { $0 >= 0 && $0 < tunnelsManager.numberOfTunnels() }
         guard !selectedTunnelIndices.isEmpty else { return }
         var nextSelection = selectedTunnelIndices.last! + 1
         if nextSelection >= tunnelsManager.numberOfTunnels() {
@@ -183,7 +228,7 @@ class TunnelsListTableViewController: NSViewController {
         alert.informativeText = tr("macDeleteTunnelConfirmationAlertInfo")
         alert.onDeleteClicked = { [weak self] completion in
             guard let self = self else { return }
-            self.selectTunnel(at: nextSelection)
+            self.selectRow(at: self.failoverGroupCount + nextSelection)
             let selectedTunnels = selectedTunnelIndices.map { self.tunnelsManager.tunnel(at: $0) }
             self.isRemovingTunnelsFromWithinTheApp = true
             self.tunnelsManager.removeMultiple(tunnels: selectedTunnels) { [weak self] error in
@@ -243,9 +288,18 @@ class TunnelsListTableViewController: NSViewController {
     }
 
     @objc func listDoubleClicked(sender: AnyObject) {
-        let tunnelIndex = tableView.clickedRow
-        guard tunnelIndex >= 0 && tunnelIndex < tunnelsManager.numberOfTunnels() else { return }
-        let tunnel = tunnelsManager.tunnel(at: tunnelIndex)
+        let row = tableView.clickedRow
+        guard row >= 0 else { return }
+
+        let tunnel: TunnelContainer
+        if row < failoverGroupCount {
+            tunnel = tunnelsManager.failoverGroup(at: row)
+        } else {
+            let tunnelIndex = row - failoverGroupCount
+            guard tunnelIndex < tunnelsManager.numberOfTunnels() else { return }
+            tunnel = tunnelsManager.tunnel(at: tunnelIndex)
+        }
+
         if tunnel.hasOnDemandRules {
             let turnOn = !tunnel.isActivateOnDemandEnabled
             tunnelsManager.setOnDemandEnabled(turnOn, on: tunnel) { error in
@@ -263,13 +317,20 @@ class TunnelsListTableViewController: NSViewController {
     }
 
     @discardableResult
-    private func selectTunnel(at index: Int) -> Bool {
-        if index < tunnelsManager.numberOfTunnels() {
+    private func selectRow(at index: Int) -> Bool {
+        let totalRows = failoverGroupCount + tunnelsManager.numberOfTunnels()
+        if index >= 0 && index < totalRows {
             tableView.scrollRowToVisible(index)
             tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
             return true
         }
         return false
+    }
+
+    // Keep old name for compatibility but delegate to new name
+    @discardableResult
+    private func selectTunnel(at index: Int) -> Bool {
+        return selectRow(at: failoverGroupCount + index)
     }
 }
 
@@ -285,11 +346,26 @@ extension TunnelsListTableViewController: TunnelEditViewControllerDelegate {
     }
 }
 
+extension TunnelsListTableViewController: FailoverGroupEditViewControllerDelegate {
+    func failoverGroupSaved(tunnel: TunnelContainer) {
+        if let groupIndex = tunnelsManager.failoverGroupIndex(of: tunnel) {
+            selectRow(at: groupIndex)
+        }
+    }
+
+    func failoverGroupEditingCancelled() {
+        // Nothing to do
+    }
+}
+
+// MARK: - Tunnel list delegate methods (called by TunnelsTracker)
+
 extension TunnelsListTableViewController {
     func tunnelAdded(at index: Int) {
-        tableView.insertRows(at: IndexSet(integer: index), withAnimation: .slideLeft)
-        if tunnelsManager.numberOfTunnels() == 1 {
-            selectTunnel(at: 0)
+        let row = failoverGroupCount + index
+        tableView.insertRows(at: IndexSet(integer: row), withAnimation: .slideLeft)
+        if tunnelsManager.numberOfTunnels() == 1 && failoverGroupCount == 0 {
+            selectRow(at: row)
         }
         if !NSApp.isActive {
             // macOS's VPN prompt might have caused us to lose focus
@@ -298,46 +374,115 @@ extension TunnelsListTableViewController {
     }
 
     func tunnelModified(at index: Int) {
-        tableView.reloadData(forRowIndexes: IndexSet(integer: index), columnIndexes: IndexSet(integer: 0))
+        let row = failoverGroupCount + index
+        tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: 0))
     }
 
     func tunnelMoved(from oldIndex: Int, to newIndex: Int) {
-        tableView.moveRow(at: oldIndex, to: newIndex)
+        let oldRow = failoverGroupCount + oldIndex
+        let newRow = failoverGroupCount + newIndex
+        tableView.moveRow(at: oldRow, to: newRow)
     }
 
     func tunnelRemoved(at index: Int) {
+        let row = failoverGroupCount + index
         let selectedIndices = tableView.selectedRowIndexes
-        let isSingleSelectedTunnelBeingRemoved = selectedIndices.contains(index) && selectedIndices.count == 1
-        tableView.removeRows(at: IndexSet(integer: index), withAnimation: .slideLeft)
-        if tunnelsManager.numberOfTunnels() == 0 {
+        let isSingleSelectedTunnelBeingRemoved = selectedIndices.contains(row) && selectedIndices.count == 1
+        tableView.removeRows(at: IndexSet(integer: row), withAnimation: .slideLeft)
+        let totalRows = failoverGroupCount + tunnelsManager.numberOfTunnels()
+        if totalRows == 0 {
             delegate?.tunnelsListEmpty()
         } else if !isRemovingTunnelsFromWithinTheApp && isSingleSelectedTunnelBeingRemoved {
-            let newSelection = min(index, tunnelsManager.numberOfTunnels() - 1)
+            let newSelection = min(row, totalRows - 1)
             tableView.selectRowIndexes(IndexSet(integer: newSelection), byExtendingSelection: false)
         }
     }
 }
 
-extension TunnelsListTableViewController: NSTableViewDataSource {
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        return tunnelsManager.numberOfTunnels()
-    }
-}
+// MARK: - Failover group list delegate methods (called by TunnelsTracker)
 
-extension TunnelsListTableViewController: NSTableViewDelegate {
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell: TunnelListRow = tableView.dequeueReusableCell()
-        cell.tunnel = tunnelsManager.tunnel(at: row)
-        return cell
+extension TunnelsListTableViewController {
+    func failoverGroupAdded(at index: Int) {
+        tableView.insertRows(at: IndexSet(integer: index), withAnimation: .slideLeft)
+        if failoverGroupCount == 1 && tunnelsManager.numberOfTunnels() == 0 {
+            selectRow(at: 0)
+        }
+        if !NSApp.isActive {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        let selectedTunnelIndices = tableView.selectedRowIndexes.sorted()
-        if !selectedTunnelIndices.isEmpty {
-            delegate?.tunnelsSelected(tunnelIndices: tableView.selectedRowIndexes.sorted())
+    func failoverGroupModified(at index: Int) {
+        tableView.reloadData(forRowIndexes: IndexSet(integer: index), columnIndexes: IndexSet(integer: 0))
+    }
+
+    func failoverGroupMoved(from oldIndex: Int, to newIndex: Int) {
+        tableView.moveRow(at: oldIndex, to: newIndex)
+    }
+
+    func failoverGroupRemoved(at index: Int) {
+        let selectedIndices = tableView.selectedRowIndexes
+        let isSingleSelectedBeingRemoved = selectedIndices.contains(index) && selectedIndices.count == 1
+        tableView.removeRows(at: IndexSet(integer: index), withAnimation: .slideLeft)
+        let totalRows = failoverGroupCount + tunnelsManager.numberOfTunnels()
+        if totalRows == 0 {
+            delegate?.tunnelsListEmpty()
+        } else if isSingleSelectedBeingRemoved {
+            let newSelection = min(index, totalRows - 1)
+            tableView.selectRowIndexes(IndexSet(integer: newSelection), byExtendingSelection: false)
         }
     }
 }
+
+// MARK: - NSTableViewDataSource
+
+extension TunnelsListTableViewController: NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        return failoverGroupCount + tunnelsManager.numberOfTunnels()
+    }
+}
+
+// MARK: - NSTableViewDelegate
+
+extension TunnelsListTableViewController: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if row < failoverGroupCount {
+            let cell: FailoverGroupListRow = tableView.dequeueReusableCell()
+            cell.tunnel = tunnelsManager.failoverGroup(at: row)
+            return cell
+        } else {
+            let cell: TunnelListRow = tableView.dequeueReusableCell()
+            cell.tunnel = tunnelsManager.tunnel(at: row - failoverGroupCount)
+            return cell
+        }
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        if row < failoverGroupCount {
+            return 36  // Taller row to accommodate subtitle
+        }
+        return tableView.rowHeight
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let selectedRows = tableView.selectedRowIndexes.sorted()
+        guard !selectedRows.isEmpty else { return }
+
+        // If a single failover group is selected
+        if selectedRows.count == 1 && selectedRows.first! < failoverGroupCount {
+            delegate?.failoverGroupSelected(at: selectedRows.first!)
+            return
+        }
+
+        // Otherwise, treat as tunnel selection (adjusted for offset)
+        let tunnelIndices = selectedRows.filter { $0 >= failoverGroupCount }.map { $0 - failoverGroupCount }
+        if !tunnelIndices.isEmpty {
+            delegate?.tunnelsSelected(tunnelIndices: tunnelIndices)
+        }
+    }
+}
+
+// MARK: - Key handling
 
 extension TunnelsListTableViewController {
     override func keyDown(with event: NSEvent) {

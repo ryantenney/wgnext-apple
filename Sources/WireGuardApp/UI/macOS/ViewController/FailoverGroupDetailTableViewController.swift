@@ -1,0 +1,637 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Ryan Tenney.
+
+import Cocoa
+import NetworkExtension
+
+class FailoverGroupDetailTableViewController: NSViewController {
+
+    private enum TableViewModelRow {
+        case nameRow
+        case statusRow
+        case toggleStatusRow
+        case tunnelRow(name: String, index: Int)
+        case activeConnectionRow(field: ActiveConnectionField)
+        case settingsRow(field: SettingsField)
+        case onDemandRow
+        case onDemandSSIDRow
+        #if FAILOVER_TESTING
+        case debugRow(action: DebugAction)
+        #endif
+        case spacerRow
+    }
+
+    private enum SettingsField: CaseIterable {
+        case trafficTimeout
+        case healthCheckInterval
+        case failbackProbeInterval
+        case autoFailback
+
+        var localizedUIString: String {
+            switch self {
+            case .trafficTimeout: return "Traffic Timeout"
+            case .healthCheckInterval: return "Health Check Interval"
+            case .failbackProbeInterval: return "Failback Probe Interval"
+            case .autoFailback: return "Auto Failback"
+            }
+        }
+    }
+
+    private enum ActiveConnectionField {
+        case activeConfig
+        case dataReceived
+        case dataSent
+        case lastHandshake
+        case failoverCount
+        case lastFailover
+        case healthStatus
+        case failbackProbe
+
+        var localizedUIString: String {
+            switch self {
+            case .activeConfig: return "Active Connection"
+            case .dataReceived: return tr("tunnelPeerRxBytes")
+            case .dataSent: return tr("tunnelPeerTxBytes")
+            case .lastHandshake: return tr("tunnelPeerLastHandshakeTime")
+            case .failoverCount: return "Failover Count"
+            case .lastFailover: return "Last Failover"
+            case .healthStatus: return "Health"
+            case .failbackProbe: return "Failback Probe"
+            }
+        }
+    }
+
+    #if FAILOVER_TESTING
+    private enum DebugAction {
+        case forceFailover
+        case forceFailback
+    }
+    #endif
+
+    let tableView: NSTableView = {
+        let tableView = NSTableView()
+        tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("FailoverGroupDetail")))
+        tableView.headerView = nil
+        tableView.rowSizeStyle = .medium
+        tableView.backgroundColor = .clear
+        tableView.selectionHighlightStyle = .none
+        return tableView
+    }()
+
+    let editButton: NSButton = {
+        let button = NSButton()
+        button.title = tr("macButtonEdit")
+        button.setButtonType(.momentaryPushIn)
+        button.bezelStyle = .rounded
+        button.toolTip = tr("macToolTipEditTunnel")
+        return button
+    }()
+
+    let box: NSBox = {
+        let box = NSBox()
+        box.titlePosition = .noTitle
+        box.fillColor = .unemphasizedSelectedContentBackgroundColor
+        return box
+    }()
+
+    let tunnelsManager: TunnelsManager
+    let tunnel: TunnelContainer
+
+    private var tunnelNames: [String] = []
+    private var settings = FailoverSettings()
+    private var onDemandViewModel: ActivateOnDemandViewModel
+
+    private var tableViewModelRows = [TableViewModelRow]()
+
+    private var statusObservationToken: AnyObject?
+    private var failoverEditVC: FailoverGroupEditViewController?
+    private var failoverStateTimer: Timer?
+    private var failoverState: [String: Any]?
+    private var activeConfigName: String?
+
+    init(tunnelsManager: TunnelsManager, tunnel: TunnelContainer) {
+        self.tunnelsManager = tunnelsManager
+        self.tunnel = tunnel
+        self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: tunnel)
+        super.init(nibName: nil, bundle: nil)
+        loadGroupData()
+        rebuildTableViewModelRows()
+        statusObservationToken = tunnel.observe(\TunnelContainer.status) { [weak self] tunnel, _ in
+            guard let self = self else { return }
+            if tunnel.status == .active {
+                self.startPollingFailoverState()
+            } else if tunnel.status == .inactive {
+                self.stopPollingFailoverState()
+                self.activeConfigName = nil
+                self.failoverState = nil
+                self.rebuildTableViewModelRows()
+                self.tableView.reloadData()
+            }
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        tableView.dataSource = self
+        tableView.delegate = self
+
+        editButton.target = self
+        editButton.action = #selector(handleEditAction)
+
+        let clipView = NSClipView()
+        clipView.documentView = tableView
+
+        let scrollView = NSScrollView()
+        scrollView.contentView = clipView
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+
+        let containerView = NSView()
+        let bottomControlsContainer = NSLayoutGuide()
+        containerView.addLayoutGuide(bottomControlsContainer)
+        containerView.addSubview(box)
+        containerView.addSubview(scrollView)
+        containerView.addSubview(editButton)
+        box.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        editButton.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            containerView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            containerView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            containerView.leadingAnchor.constraint(equalTo: bottomControlsContainer.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: bottomControlsContainer.trailingAnchor),
+            bottomControlsContainer.heightAnchor.constraint(equalToConstant: 32),
+            scrollView.bottomAnchor.constraint(equalTo: bottomControlsContainer.topAnchor),
+            bottomControlsContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            editButton.trailingAnchor.constraint(equalTo: bottomControlsContainer.trailingAnchor),
+            bottomControlsContainer.bottomAnchor.constraint(equalTo: editButton.bottomAnchor, constant: 0)
+        ])
+
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: box.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: box.trailingAnchor)
+        ])
+
+        NSLayoutConstraint.activate([
+            containerView.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
+            containerView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
+        ])
+
+        view = containerView
+    }
+
+    private func loadGroupData() {
+        guard let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else { return }
+        let providerConfig = proto.providerConfiguration ?? [:]
+        tunnelNames = (providerConfig["FailoverConfigNames"] as? [String]) ?? []
+        if let settingsData = providerConfig["FailoverSettings"] as? Data {
+            settings = (try? JSONDecoder().decode(FailoverSettings.self, from: settingsData)) ?? FailoverSettings()
+        } else {
+            settings = FailoverSettings()
+        }
+    }
+
+    private func rebuildTableViewModelRows() {
+        var rows = [TableViewModelRow]()
+
+        // Name + Status + Toggle
+        rows.append(.nameRow)
+        rows.append(.statusRow)
+        rows.append(.toggleStatusRow)
+        rows.append(.spacerRow)
+
+        // Connections
+        for (index, name) in tunnelNames.enumerated() {
+            rows.append(.tunnelRow(name: name, index: index))
+        }
+        rows.append(.spacerRow)
+
+        // Active Connection (when active)
+        if tunnel.status == .active, let state = failoverState {
+            let fields = computeVisibleActiveConnectionFields(from: state)
+            if !fields.isEmpty {
+                for field in fields {
+                    rows.append(.activeConnectionRow(field: field))
+                }
+                rows.append(.spacerRow)
+            }
+        }
+
+        // Settings
+        for field in SettingsField.allCases {
+            rows.append(.settingsRow(field: field))
+        }
+        rows.append(.spacerRow)
+
+        // On-Demand
+        rows.append(.onDemandRow)
+        if onDemandViewModel.isWiFiInterfaceEnabled {
+            rows.append(.onDemandSSIDRow)
+        }
+
+        #if FAILOVER_TESTING
+        if tunnel.status == .active {
+            rows.append(.spacerRow)
+            rows.append(.debugRow(action: .forceFailover))
+            rows.append(.debugRow(action: .forceFailback))
+        }
+        #endif
+
+        tableViewModelRows = rows
+    }
+
+    @objc func handleEditAction() {
+        let editVC = FailoverGroupEditViewController(tunnelsManager: tunnelsManager, tunnel: tunnel)
+        editVC.delegate = self
+        presentAsSheet(editVC)
+        self.failoverEditVC = editVC
+    }
+
+    @objc func handleToggleActiveStatusAction() {
+        if tunnel.hasOnDemandRules {
+            let turnOn = !tunnel.isActivateOnDemandEnabled
+            tunnelsManager.setOnDemandEnabled(turnOn, on: tunnel) { error in
+                if error == nil && !turnOn {
+                    self.tunnelsManager.startDeactivation(of: self.tunnel)
+                }
+            }
+        } else {
+            if tunnel.status == .inactive {
+                tunnelsManager.startActivation(of: tunnel)
+            } else if tunnel.status == .active {
+                tunnelsManager.startDeactivation(of: tunnel)
+            }
+        }
+    }
+
+    override func viewWillAppear() {
+        if tunnel.status == .active {
+            startPollingFailoverState()
+        }
+    }
+
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        if let failoverEditVC = failoverEditVC {
+            dismiss(failoverEditVC)
+        }
+        stopPollingFailoverState()
+    }
+
+    // MARK: - Failover State Polling
+
+    private func startPollingFailoverState() {
+        pollFailoverState()
+        stopPollingFailoverState()
+        failoverStateTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.pollFailoverState()
+        }
+    }
+
+    private func stopPollingFailoverState() {
+        failoverStateTimer?.invalidate()
+        failoverStateTimer = nil
+    }
+
+    private func pollFailoverState() {
+        tunnelsManager.getFailoverState(for: tunnel) { [weak self] state in
+            guard let self = self, let state = state else { return }
+            DispatchQueue.main.async {
+                self.failoverState = state
+                self.activeConfigName = state["activeConfig"] as? String
+                self.rebuildTableViewModelRows()
+                self.tableView.reloadData()
+            }
+        }
+    }
+
+    private func computeVisibleActiveConnectionFields(from state: [String: Any]) -> [ActiveConnectionField] {
+        var fields = [ActiveConnectionField]()
+        fields.append(.activeConfig)
+
+        if let rx = state["rxBytes"] as? UInt64, rx > 0 {
+            fields.append(.dataReceived)
+        }
+        if let tx = state["txBytes"] as? UInt64, tx > 0 {
+            fields.append(.dataSent)
+        }
+        if state["lastHandshakeTime"] as? Double != nil {
+            fields.append(.lastHandshake)
+        }
+        if let count = state["consecutiveCycles"] as? Int, count > 0 {
+            fields.append(.failoverCount)
+        }
+        if state["lastSwitchTime"] as? Double != nil {
+            fields.append(.lastFailover)
+        }
+        if state["txWithoutRxSince"] as? Double != nil {
+            fields.append(.healthStatus)
+        }
+        if let probing = state["isProbing"] as? Bool, probing {
+            fields.append(.failbackProbe)
+        }
+        return fields
+    }
+
+    // MARK: - Formatting
+
+    private func prettyBytes(_ bytes: UInt64) -> String {
+        switch bytes {
+        case 0..<1024:
+            return "\(bytes) B"
+        case 1024..<(1024 * 1024):
+            return String(format: "%.2f", Double(bytes) / 1024) + " KiB"
+        case (1024 * 1024)..<(1024 * 1024 * 1024):
+            return String(format: "%.2f", Double(bytes) / (1024 * 1024)) + " MiB"
+        case (1024 * 1024 * 1024)..<(1024 * 1024 * 1024 * 1024):
+            return String(format: "%.2f", Double(bytes) / (1024 * 1024 * 1024)) + " GiB"
+        default:
+            return String(format: "%.2f", Double(bytes) / (1024 * 1024 * 1024 * 1024)) + " TiB"
+        }
+    }
+
+    private func prettyTimeAgo(since date: Date) -> String {
+        let seconds = Int64(Date().timeIntervalSince(date))
+        guard seconds >= 0 else { return "the future" }
+        if seconds == 0 { return "now" }
+
+        var parts = [String]()
+        let days = seconds / 86400
+        let hours = (seconds % 86400) / 3600
+        let minutes = (seconds % 3600) / 60
+        let secs = seconds % 60
+
+        if days > 0 { parts.append("\(days) day\(days == 1 ? "" : "s")") }
+        if hours > 0 { parts.append("\(hours) hour\(hours == 1 ? "" : "s")") }
+        if minutes > 0 { parts.append("\(minutes) minute\(minutes == 1 ? "" : "s")") }
+        if secs > 0 || parts.isEmpty { parts.append("\(secs) second\(secs == 1 ? "" : "s")") }
+
+        return parts.prefix(2).joined(separator: ", ") + " ago"
+    }
+
+    private func activeConnectionValue(for field: ActiveConnectionField) -> String {
+        guard let state = failoverState else { return "" }
+
+        switch field {
+        case .activeConfig:
+            return activeConfigName ?? ""
+        case .dataReceived:
+            if let rx = state["rxBytes"] as? UInt64 { return prettyBytes(rx) }
+            return ""
+        case .dataSent:
+            if let tx = state["txBytes"] as? UInt64 { return prettyBytes(tx) }
+            return ""
+        case .lastHandshake:
+            if let timestamp = state["lastHandshakeTime"] as? Double {
+                return prettyTimeAgo(since: Date(timeIntervalSince1970: timestamp))
+            }
+            return ""
+        case .failoverCount:
+            if let count = state["consecutiveCycles"] as? Int { return "\(count)" }
+            return ""
+        case .lastFailover:
+            if let timestamp = state["lastSwitchTime"] as? Double {
+                return prettyTimeAgo(since: Date(timeIntervalSince1970: timestamp))
+            }
+            return ""
+        case .healthStatus:
+            if let since = state["txWithoutRxSince"] as? Double {
+                let duration = Int(Date().timeIntervalSince1970 - since)
+                return "Unhealthy (tx without rx for \(duration)s)"
+            }
+            return "Healthy"
+        case .failbackProbe:
+            return "Probing primary..."
+        }
+    }
+
+    // MARK: - Status helpers
+
+    private static func localizedStatusDescription(for tunnel: TunnelContainer) -> String {
+        let status = tunnel.status
+        let isOnDemandEngaged = tunnel.isActivateOnDemandEnabled
+
+        var text: String
+        switch status {
+        case .inactive: text = tr("tunnelStatusInactive")
+        case .activating: text = tr("tunnelStatusActivating")
+        case .active: text = tr("tunnelStatusActive")
+        case .deactivating: text = tr("tunnelStatusDeactivating")
+        case .reasserting: text = tr("tunnelStatusReasserting")
+        case .restarting: text = tr("tunnelStatusRestarting")
+        case .waiting: text = tr("tunnelStatusWaiting")
+        }
+
+        if tunnel.hasOnDemandRules {
+            text += isOnDemandEngaged ?
+                tr("tunnelStatusAddendumOnDemandEnabled") : tr("tunnelStatusAddendumOnDemandDisabled")
+        }
+
+        return text
+    }
+
+    private static func image(for tunnel: TunnelContainer?) -> NSImage? {
+        return TunnelListRow.image(for: tunnel)
+    }
+
+    private static func localizedToggleStatusActionText(for tunnel: TunnelContainer) -> String {
+        if tunnel.hasOnDemandRules {
+            let turnOn = !tunnel.isActivateOnDemandEnabled
+            if turnOn {
+                return tr("macToggleStatusButtonEnableOnDemand")
+            } else {
+                if tunnel.status == .active {
+                    return tr("macToggleStatusButtonDisableOnDemandDeactivate")
+                } else {
+                    return tr("macToggleStatusButtonDisableOnDemand")
+                }
+            }
+        } else {
+            switch tunnel.status {
+            case .waiting: return tr("macToggleStatusButtonWaiting")
+            case .inactive: return tr("macToggleStatusButtonActivate")
+            case .activating: return tr("macToggleStatusButtonActivating")
+            case .active: return tr("macToggleStatusButtonDeactivate")
+            case .deactivating: return tr("macToggleStatusButtonDeactivating")
+            case .reasserting: return tr("macToggleStatusButtonReasserting")
+            case .restarting: return tr("macToggleStatusButtonRestarting")
+            }
+        }
+    }
+}
+
+// MARK: - NSTableViewDataSource
+
+extension FailoverGroupDetailTableViewController: NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        return tableViewModelRows.count
+    }
+}
+
+// MARK: - NSTableViewDelegate
+
+extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let modelRow = tableViewModelRows[row]
+        switch modelRow {
+        case .nameRow:
+            let cell: KeyValueRow = tableView.dequeueReusableCell()
+            cell.key = tr(format: "macFieldKey (%@)", tr("tunnelInterfaceName"))
+            cell.value = tunnel.name
+            cell.isKeyInBold = true
+            return cell
+
+        case .statusRow:
+            return statusCell()
+
+        case .toggleStatusRow:
+            return toggleStatusCell()
+
+        case .tunnelRow(let name, let index):
+            let cell: KeyValueRow = tableView.dequeueReusableCell()
+            var label = index == 0 ? "Primary" : "Fallback #\(index)"
+            if let activeConfigName = activeConfigName, activeConfigName == name {
+                label += " (Active)"
+            }
+            cell.key = tr(format: "macFieldKey (%@)", name)
+            cell.value = label
+            cell.isKeyInBold = index == 0
+            return cell
+
+        case .activeConnectionRow(let field):
+            let cell: KeyValueRow = tableView.dequeueReusableCell()
+            cell.key = tr(format: "macFieldKey (%@)", field.localizedUIString)
+            cell.value = activeConnectionValue(for: field)
+            cell.isKeyInBold = field == .activeConfig
+            return cell
+
+        case .settingsRow(let field):
+            let cell: KeyValueRow = tableView.dequeueReusableCell()
+            cell.key = tr(format: "macFieldKey (%@)", field.localizedUIString)
+            switch field {
+            case .trafficTimeout:
+                cell.value = "\(Int(settings.trafficTimeout))s"
+            case .healthCheckInterval:
+                cell.value = "\(Int(settings.healthCheckInterval))s"
+            case .failbackProbeInterval:
+                cell.value = "\(Int(settings.failbackProbeInterval))s"
+            case .autoFailback:
+                cell.value = settings.autoFailback ? "Yes" : "No"
+            }
+            cell.isKeyInBold = false
+            return cell
+
+        case .onDemandRow:
+            let cell: KeyValueRow = tableView.dequeueReusableCell()
+            cell.key = tr("macFieldOnDemand")
+            cell.value = onDemandViewModel.localizedInterfaceDescription
+            cell.isKeyInBold = true
+            return cell
+
+        case .onDemandSSIDRow:
+            let cell: KeyValueRow = tableView.dequeueReusableCell()
+            cell.key = tr("macFieldOnDemandSSIDs")
+            let value: String
+            if onDemandViewModel.ssidOption == .anySSID {
+                value = onDemandViewModel.ssidOption.localizedUIString
+            } else {
+                value = tr(format: "tunnelOnDemandSSIDOptionDescriptionMac (%1$@: %2$@)",
+                           onDemandViewModel.ssidOption.localizedUIString,
+                           onDemandViewModel.selectedSSIDs.joined(separator: ", "))
+            }
+            cell.value = value
+            cell.isKeyInBold = false
+            return cell
+
+        #if FAILOVER_TESTING
+        case .debugRow(let action):
+            let cell: ButtonRow = tableView.dequeueReusableCell()
+            switch action {
+            case .forceFailover:
+                cell.buttonTitle = "Force Failover"
+                cell.onButtonClicked = { [weak self] in
+                    guard let self = self else { return }
+                    self.tunnelsManager.debugForceFailover(for: self.tunnel) { success in
+                        DispatchQueue.main.async {
+                            if success { self.pollFailoverState() }
+                        }
+                    }
+                }
+            case .forceFailback:
+                cell.buttonTitle = "Force Failback to Primary"
+                cell.onButtonClicked = { [weak self] in
+                    guard let self = self else { return }
+                    self.tunnelsManager.debugForceFailback(for: self.tunnel) { success in
+                        DispatchQueue.main.async {
+                            if success { self.pollFailoverState() }
+                        }
+                    }
+                }
+            }
+            return cell
+        #endif
+
+        case .spacerRow:
+            return NSView()
+        }
+    }
+
+    func statusCell() -> NSView {
+        let cell: KeyValueImageRow = tableView.dequeueReusableCell()
+        cell.key = tr(format: "macFieldKey (%@)", tr("tunnelInterfaceStatus"))
+        cell.value = FailoverGroupDetailTableViewController.localizedStatusDescription(for: tunnel)
+        cell.valueImage = FailoverGroupDetailTableViewController.image(for: tunnel)
+        let changeHandler: (TunnelContainer, Any) -> Void = { [weak cell] tunnel, _ in
+            guard let cell = cell else { return }
+            cell.value = FailoverGroupDetailTableViewController.localizedStatusDescription(for: tunnel)
+            cell.valueImage = FailoverGroupDetailTableViewController.image(for: tunnel)
+        }
+        cell.statusObservationToken = tunnel.observe(\.status, changeHandler: changeHandler)
+        cell.isOnDemandEnabledObservationToken = tunnel.observe(\.isActivateOnDemandEnabled, changeHandler: changeHandler)
+        cell.hasOnDemandRulesObservationToken = tunnel.observe(\.hasOnDemandRules, changeHandler: changeHandler)
+        return cell
+    }
+
+    func toggleStatusCell() -> NSView {
+        let cell: ButtonRow = tableView.dequeueReusableCell()
+        cell.buttonTitle = FailoverGroupDetailTableViewController.localizedToggleStatusActionText(for: tunnel)
+        cell.isButtonEnabled = (tunnel.hasOnDemandRules || tunnel.status == .active || tunnel.status == .inactive)
+        cell.buttonToolTip = tr("macToolTipToggleStatus")
+        cell.onButtonClicked = { [weak self] in
+            self?.handleToggleActiveStatusAction()
+        }
+        let changeHandler: (TunnelContainer, Any) -> Void = { [weak cell] tunnel, _ in
+            guard let cell = cell else { return }
+            cell.buttonTitle = FailoverGroupDetailTableViewController.localizedToggleStatusActionText(for: tunnel)
+            cell.isButtonEnabled = (tunnel.hasOnDemandRules || tunnel.status == .active || tunnel.status == .inactive)
+        }
+        cell.statusObservationToken = tunnel.observe(\.status, changeHandler: changeHandler)
+        cell.isOnDemandEnabledObservationToken = tunnel.observe(\.isActivateOnDemandEnabled, changeHandler: changeHandler)
+        cell.hasOnDemandRulesObservationToken = tunnel.observe(\.hasOnDemandRules, changeHandler: changeHandler)
+        return cell
+    }
+}
+
+// MARK: - FailoverGroupEditViewControllerDelegate
+
+extension FailoverGroupDetailTableViewController: FailoverGroupEditViewControllerDelegate {
+    func failoverGroupSaved(tunnel: TunnelContainer) {
+        loadGroupData()
+        onDemandViewModel = ActivateOnDemandViewModel(tunnel: tunnel)
+        rebuildTableViewModelRows()
+        tableView.reloadData()
+        self.failoverEditVC = nil
+    }
+
+    func failoverGroupEditingCancelled() {
+        self.failoverEditVC = nil
+    }
+}

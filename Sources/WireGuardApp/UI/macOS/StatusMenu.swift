@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
+// Copyright © 2026 Ryan Tenney.
 
 import Cocoa
 
@@ -18,6 +19,10 @@ class StatusMenu: NSMenu {
     private let tunnelsBreakdownMenu = NSMenu()
     private let tunnelsMenuItem = NSMenuItem(title: tr("macTunnelsMenuTitle"), action: nil, keyEquivalent: "")
     private let tunnelsMenuSeparatorItem = NSMenuItem.separator()
+
+    private var firstFailoverGroupMenuItemIndex = 0
+    private var numberOfFailoverGroupMenuItems = 0
+    private let failoverGroupSeparatorItem = NSMenuItem.separator()
 
     private var firstTunnelMenuItemIndex = 0
     private var numberOfTunnelMenuItems = 0
@@ -40,6 +45,12 @@ class StatusMenu: NSMenu {
 
         tunnelsMenuItem.submenu = tunnelsBreakdownMenu
         addItem(tunnelsMenuItem)
+
+        // Failover groups appear inline before tunnels
+        firstFailoverGroupMenuItemIndex = numberOfItems
+        populateInitialFailoverGroupMenuItems()
+
+        addItem(failoverGroupSeparatorItem)
 
         firstTunnelMenuItemIndex = numberOfItems
         populateInitialTunnelMenuItems()
@@ -175,6 +186,57 @@ class StatusMenu: NSMenu {
     }
 }
 
+// MARK: - Failover Group Menu Items
+
+extension StatusMenu {
+    private func populateInitialFailoverGroupMenuItems() {
+        let count = tunnelsManager.numberOfFailoverGroups()
+        for index in 0..<count {
+            let groupTunnel = tunnelsManager.failoverGroup(at: index)
+            let menuItem = makeFailoverGroupItem(tunnel: groupTunnel)
+            insertItem(menuItem, at: firstFailoverGroupMenuItemIndex + index)
+        }
+        numberOfFailoverGroupMenuItems = count
+        updateFailoverGroupSeparatorVisibility()
+    }
+
+    func insertFailoverGroupMenuItem(for tunnel: TunnelContainer, at index: Int) {
+        let menuItem = makeFailoverGroupItem(tunnel: tunnel)
+        insertItem(menuItem, at: firstFailoverGroupMenuItemIndex + index)
+        numberOfFailoverGroupMenuItems += 1
+        // Tunnel items shift down by one
+        firstTunnelMenuItemIndex += 1
+        updateFailoverGroupSeparatorVisibility()
+    }
+
+    func removeFailoverGroupMenuItem(at index: Int) {
+        removeItem(at: firstFailoverGroupMenuItemIndex + index)
+        numberOfFailoverGroupMenuItems -= 1
+        // Tunnel items shift up by one
+        firstTunnelMenuItemIndex -= 1
+        updateFailoverGroupSeparatorVisibility()
+    }
+
+    func moveFailoverGroupMenuItem(from oldIndex: Int, to newIndex: Int) {
+        let groupTunnel = tunnelsManager.failoverGroup(at: newIndex)
+        let menuItem = makeFailoverGroupItem(tunnel: groupTunnel)
+        removeItem(at: firstFailoverGroupMenuItemIndex + oldIndex)
+        insertItem(menuItem, at: firstFailoverGroupMenuItemIndex + newIndex)
+    }
+
+    private func makeFailoverGroupItem(tunnel: TunnelContainer) -> TunnelMenuItem {
+        let menuItem = TunnelMenuItem(tunnel: tunnel, action: #selector(tunnelClicked(sender:)))
+        menuItem.target = self
+        return menuItem
+    }
+
+    private func updateFailoverGroupSeparatorVisibility() {
+        failoverGroupSeparatorItem.isHidden = numberOfFailoverGroupMenuItems == 0
+    }
+}
+
+// MARK: - Tunnel Menu Items
+
 extension StatusMenu {
     func insertTunnelMenuItem(for tunnel: TunnelContainer, at tunnelIndex: Int) {
         let nextNumberOfTunnels = numberOfTunnelMenuItems + 1
@@ -291,7 +353,7 @@ extension StatusMenu {
         case .submenu:
             tunnelsMenuItem.isHidden = false
         }
-        tunnelsMenuSeparatorItem.isHidden = numberOfTunnelMenuItems == 0
+        tunnelsMenuSeparatorItem.isHidden = numberOfTunnelMenuItems == 0 && numberOfFailoverGroupMenuItems == 0
     }
 }
 
