@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "تنظیمات";
 "tunnelsListCenteredAddTunnelButtonTitle" = "اضافه کردن تونل";
 "tunnelsListSwipeDeleteButtonTitle" = "حذف";
@@ -179,7 +179,7 @@
 "settingsViewTitle" = "تنظیمات";
 
 "settingsSectionTitleAbout" = "درباره ما";
-"settingsVersionKeyWireGuardForIOS" = "WireGuard برای iOS";
+"settingsVersionKeyWireGuardForIOS" = "WGnext برای iOS";
 "settingsExportZipButtonTitle" = "برون‌بری بایگانی زیپ";
 
 "settingsSectionTitleTunnelLog" = "گزارش رویداد";
@@ -238,16 +238,16 @@
 "macMenuNetworks (%@)" = "شبکه‌ها: %@";
 "macMenuNetworksNone" = "شبکه‌ها: هیچی";
 
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macMenuManageTunnels" = "مدیریت تونل‌ها";
 "macMenuImportTunnels" = "وارد کردن تونل(ها) از پرونده…";
 "macMenuAddEmptyTunnel" = "افزودن تونل خالی…";
 "macMenuViewLog" = "مشاهده گزارش رویداد";
 "macMenuExportTunnels" = "برون‌بری تونل‌ها در پرونده زیپ…";
-"macMenuAbout" = "درباره WireGuard";
-"macMenuQuit" = "خروج از WireGuard";
+"macMenuAbout" = "درباره WGnext";
+"macMenuQuit" = "خروج از WGnext";
 
-"macMenuHideApp" = "WireGuard را پنهان کن";
+"macMenuHideApp" = "WGnext را پنهان کن";
 "macMenuHideOtherApps" = "پنهان کردن دیگران";
 "macMenuShowAllApps" = "نمایش همه";
 
@@ -270,7 +270,7 @@
 
 // Mac manage tunnels window
 
-"macWindowTitleManageTunnels" = "مدیریت تونل‌های WireGuard";
+"macWindowTitleManageTunnels" = "مدیریت تونل‌های WGnext";
 "macDeleteTunnelConfirmationAlertInfo" = "شما نمی‌توانید این عمل را خنثی کنید.";
 "macDeleteTunnelConfirmationAlertButtonTitleDelete" = "حذف";
 "macDeleteTunnelConfirmationAlertButtonTitleCancel" = "لغو";
@@ -329,7 +329,7 @@
 
 "macExportPrivateData" = "برو‌ن‌بری کلید‌های خصوصی تونل";
 "macViewPrivateData" = "مشاهده کلید‌های خصوصی تونل";
-"macConfirmAndQuitAlertQuitWireGuard" = "خروج از WireGuard";
+"macConfirmAndQuitAlertQuitWGnext" = "خروج از WGnext";
 "macConfirmAndQuitAlertCloseWindow" = "بستن مدیر تونل‌ها";
 
 // Mac tooltip
@@ -351,13 +351,13 @@
 "tunnelHandshakeTimestampSystemClockBackward" = "(System clock wound backwards)";
 "macAlertNoInterface" = "Configuration must have an ‘Interface’ section.";
 "alertScanQRCodeCameraUnsupportedMessage" = "This device is not able to scan QR codes";
-"macConfirmAndQuitAlertInfo" = "If you close the tunnels manager, WireGuard will continue to be available from the menu bar icon.";
+"macConfirmAndQuitAlertInfo" = "If you close the tunnels manager, WGnext will continue to be available from the menu bar icon.";
 "macUnusableTunnelInfo" = "In case this tunnel was created by another user, only that user can view, edit, or activate this tunnel.";
 "alertTunnelActivationErrorTunnelIsNotInactiveMessage" = "The tunnel is already active or in the process of being activated";
 "alertTunnelActivationSetNetworkSettingsMessage" = "Unable to apply network settings to tunnel object.";
 "alertCantOpenInputConfFileTitle" = "Unable to import from file";
 "alertScanQRCodeInvalidQRCodeMessage" = "The scanned QR code is not a valid WireGuard configuration";
-"macConfirmAndQuitAlertMessage" = "Do you want to close the tunnels manager or quit WireGuard entirely?";
+"macConfirmAndQuitAlertMessage" = "Do you want to close the tunnels manager or quit WGnext entirely?";
 "alertTunnelActivationSavedConfigFailureMessage" = "Unable to retrieve tunnel information from the saved configuration.";
 "macAlertInfoUnrecognizedInterfaceKey" = "Valid keys are: ‘PrivateKey’, ‘ListenPort’, ‘Address’, ‘DNS’ and ‘MTU’.";
 "alertTunnelNameEmptyMessage" = "Cannot create tunnel with an empty name";
@@ -376,7 +376,7 @@
 "alertCantOpenOutputZipFileForWritingMessage" = "Could not open zip file for writing.";
 "alertInvalidPeerMessagePublicKeyInvalid" = "Peer’s public key must be a 32-byte key in base64 encoding";
 "alertSystemErrorMessageTunnelConfigurationReadWriteFailed" = "Reading or writing the configuration failed.";
-"macAppExitingWithActiveTunnelMessage" = "WireGuard is exiting with an active tunnel";
+"macAppExitingWithActiveTunnelMessage" = "WGnext is exiting with an active tunnel";
 "alertTunnelDNSFailureMessage" = "One or more endpoint domains could not be resolved.";
 "alertInvalidInterfaceMessageAddressInvalid" = "Interface addresses must be a list of comma-separated IP addresses, optionally in CIDR notation";
 "alertTunnelDNSFailureTitle" = "DNS resolution failure";
@@ -384,7 +384,7 @@
 "alertCantOpenInputZipFileTitle" = "Unable to read zip archive";
 "alertScanQRCodeUnreadableQRCodeMessage" = "The scanned code could not be read";
 "macAlertMultipleInterfaces" = "Configuration must have only one ‘Interface’ section.";
-"macAppStoreUpdatingAlertMessage" = "App Store would like to update WireGuard";
+"macAppStoreUpdatingAlertMessage" = "App Store would like to update WGnext";
 "macUnusableTunnelMessage" = "The configuration for this tunnel cannot be found in the keychain.";
 "iosViewPrivateData" = "Authenticate to view tunnel private keys.";
 "macToolTipToggleStatus" = "Toggle status (⌘T)";

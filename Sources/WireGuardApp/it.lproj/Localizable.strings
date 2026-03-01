@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "Impostazioni";
 "tunnelsListCenteredAddTunnelButtonTitle" = "Aggiungi un tunnel";
 "tunnelsListSwipeDeleteButtonTitle" = "Elimina";
@@ -203,7 +203,7 @@
 "settingsViewTitle" = "Impostazioni";
 
 "settingsSectionTitleAbout" = "Informazioni";
-"settingsVersionKeyWireGuardForIOS" = "WireGuard per iOS";
+"settingsVersionKeyWireGuardForIOS" = "WGnext per iOS";
 "settingsVersionKeyWireGuardGoBackend" = "Backend Go di WireGuard";
 
 "settingsSectionTitleExportConfigurations" = "Esporta configurazioni";
@@ -294,16 +294,16 @@
 "macMenuNetworks (%@)" = "Reti: %@";
 "macMenuNetworksNone" = "Reti: nessuna";
 
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macMenuManageTunnels" = "Gestisci i tunnel";
 "macMenuImportTunnels" = "Importa tunnel da file…";
 "macMenuAddEmptyTunnel" = "Aggiungi tunnel vuoto…";
 "macMenuViewLog" = "Visualizza log";
 "macMenuExportTunnels" = "Esporta tunnel in Zip…";
-"macMenuAbout" = "Informazioni su WireGuard";
-"macMenuQuit" = "Chiudi WireGuard";
+"macMenuAbout" = "Informazioni su WGnext";
+"macMenuQuit" = "Chiudi WGnext";
 
-"macMenuHideApp" = "Nascondi WireGuard";
+"macMenuHideApp" = "Nascondi WGnext";
 "macMenuHideOtherApps" = "Nascondi altri";
 "macMenuShowAllApps" = "Mostra tutto";
 
@@ -327,7 +327,7 @@
 
 // Mac manage tunnels window
 
-"macWindowTitleManageTunnels" = "Gestisci i tunnel di WireGuard";
+"macWindowTitleManageTunnels" = "Gestisci i tunnel di WGnext";
 
 "macDeleteTunnelConfirmationAlertMessage (%@)" = "Sei sicuro di voler eliminare ‘%@’?";
 "macDeleteMultipleTunnelsConfirmationAlertMessage (%d)" = "Sei sicuro di voler eliminare %d tunnel?";
@@ -405,13 +405,13 @@
 
 // Mac alert
 
-"macConfirmAndQuitAlertMessage" = "Vuoi chiudere il gestore dei tunnel o chiudere completamente WireGuard?";
-"macConfirmAndQuitAlertInfo" = "Se chiudi il gestore dei tunnel, WireGuard continuerà a essere disponibile dall'icona della barra dei menu.";
-"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Se chiudi il gestore dei tunnel, WireGuard continuerà a essere disponibile dall'icona della barra dei menu.\n\nNota che se vuoi chiudere completamente WireGuard il tunnel attualmente attivo ('%@') rimarrà attivo fino a quando lo disabiliti da questa applicazione o tramite il pannello Rete nelle Preferenze di Sistema.";
-"macConfirmAndQuitAlertQuitWireGuard" = "Chiudi WireGuard";
+"macConfirmAndQuitAlertMessage" = "Vuoi chiudere il gestore dei tunnel o chiudere completamente WGnext?";
+"macConfirmAndQuitAlertInfo" = "Se chiudi il gestore dei tunnel, WGnext continuerà a essere disponibile dall'icona della barra dei menu.";
+"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Se chiudi il gestore dei tunnel, WGnext continuerà a essere disponibile dall'icona della barra dei menu.\n\nNota che se vuoi chiudere completamente WGnext il tunnel attualmente attivo ('%@') rimarrà attivo fino a quando lo disabiliti da questa applicazione o tramite il pannello Rete nelle Preferenze di Sistema.";
+"macConfirmAndQuitAlertQuitWGnext" = "Chiudi WGnext";
 "macConfirmAndQuitAlertCloseWindow" = "Chiudi il gestore dei tunnel";
 
-"macAppExitingWithActiveTunnelMessage" = "WireGuard sta per essere chiuso con un tunnel attivo";
+"macAppExitingWithActiveTunnelMessage" = "WGnext sta per essere chiuso con un tunnel attivo";
 "macAppExitingWithActiveTunnelInfo" = "Il tunnel rimarrà attivo dopo l'uscita. Puoi disabilitarlo riaprendo questa applicazione o tramite il pannello Rete nelle Preferenze di Sistema.";
 
 // Mac tooltip
@@ -434,7 +434,7 @@
 
 // Mac App Store updating alert
 
-"macAppStoreUpdatingAlertMessage" = "App Store vuole aggiornare WireGuard";
+"macAppStoreUpdatingAlertMessage" = "App Store vuole aggiornare WGnext";
 "macAppStoreUpdatingAlertInfoWithOnDemand (%@)" = "Disabilita l'attivazione su richiesta del tunnel ‘%@’, disattivalo e continua l'aggiornamento in App Store.";
 "macAppStoreUpdatingAlertInfoWithoutOnDemand (%@)" = "Disattiva il tunnel ‘%@’ e continua l'aggiornamento in App Store.";
 

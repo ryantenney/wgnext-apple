@@ -225,6 +225,9 @@
 		BB3D4E01293FA00000000012 /* FailoverGroupListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA00000000009 /* FailoverGroupListRow.swift */; };
 		BB3D4E01293FA00000000013 /* FailoverGroupDetailTableViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA0000000000A /* FailoverGroupDetailTableViewController.swift */; };
 		BB3D4E01293FA00000000014 /* FailoverGroupEditViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA0000000000B /* FailoverGroupEditViewController.swift */; };
+		BB3D4E01293FA00000000015 /* NotificationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA0000000000C /* NotificationSettings.swift */; };
+		BB3D4E01293FA00000000016 /* NotificationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA0000000000C /* NotificationSettings.swift */; };
+		BB3D4E01293FA00000000017 /* VPNStatusData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B2C01293FA0000000000D /* VPNStatusData.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -471,6 +474,8 @@
 		AA1B2C01293FA00000000009 /* FailoverGroupListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupListRow.swift; sourceTree = "<group>"; };
 		AA1B2C01293FA0000000000A /* FailoverGroupDetailTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupDetailTableViewController.swift; sourceTree = "<group>"; };
 		AA1B2C01293FA0000000000B /* FailoverGroupEditViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailoverGroupEditViewController.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA0000000000C /* NotificationSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettings.swift; sourceTree = "<group>"; };
+		AA1B2C01293FA0000000000D /* VPNStatusData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPNStatusData.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -623,6 +628,8 @@
 				6F5A2B4421AFDE020081EDD8 /* FileManager+Extension.swift */,
 				6B5C5E26220A48D30024272E /* Keychain.swift */,
 				58233BCE2591F842002060A8 /* NotificationToken.swift */,
+				AA1B2C01293FA0000000000C /* NotificationSettings.swift */,
+				AA1B2C01293FA0000000000D /* VPNStatusData.swift */,
 			);
 			name = Shared;
 			path = Sources/Shared;
@@ -1324,6 +1331,7 @@
 				585B10732577E294004F691E /* Array+ConcurrentMap.swift in Sources */,
 				BB3D4E01293FA00000000002 /* FailoverSettings.swift in Sources */,
 				BB3D4E01293FA00000000006 /* ConnectionHealthMonitor.swift in Sources */,
+				BB3D4E01293FA00000000016 /* NotificationSettings.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1526,6 +1534,8 @@
 				BB3D4E01293FA0000000000D /* FailoverGroupCell.swift in Sources */,
 				BB3D4E01293FA0000000000E /* FailoverGroupEditTableViewController.swift in Sources */,
 				BB3D4E01293FA0000000000F /* FailoverGroupDetailTableViewController.swift in Sources */,
+				BB3D4E01293FA00000000015 /* NotificationSettings.swift in Sources */,
+				BB3D4E01293FA00000000017 /* VPNStatusData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1690,7 +1700,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_ID_MACOS)";
-				PRODUCT_NAME = WireGuard;
+				PRODUCT_NAME = WGnext;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
 			};
@@ -1711,7 +1721,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_ID_MACOS)";
-				PRODUCT_NAME = WireGuard;
+				PRODUCT_NAME = WGnext;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
 			};
@@ -1939,7 +1949,7 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_ID_IOS)";
-				PRODUCT_NAME = WireGuard;
+				PRODUCT_NAME = WGnext;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -1956,7 +1966,7 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_ID_IOS)";
-				PRODUCT_NAME = WireGuard;
+				PRODUCT_NAME = WGnext;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

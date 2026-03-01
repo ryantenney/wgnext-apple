@@ -196,11 +196,11 @@ platform :mac do
       end
     end
     UI.user_error!("Could not find built .app to install") unless app_output && File.exist?(app_output)
-    sh("pkill -x WireGuard || true")
+    sh("pkill -x WGnext || true")
     # Use osascript to get admin privileges for installing to /Applications
-    sh("osascript -e 'do shell script \"rm -rf /Applications/WireGuard.app && cp -R \\\"#{app_output}\\\" /Applications/\" with administrator privileges'")
-    UI.success("Installed to /Applications/WireGuard.app")
-    sh("open /Applications/WireGuard.app")
+    sh("osascript -e 'do shell script \"rm -rf /Applications/WGnext.app && cp -R \\\"#{app_output}\\\" /Applications/\" with administrator privileges'")
+    UI.success("Installed to /Applications/WGnext.app")
+    sh("open /Applications/WGnext.app")
   end
 
   desc "Build WireGuard for macOS (release)"

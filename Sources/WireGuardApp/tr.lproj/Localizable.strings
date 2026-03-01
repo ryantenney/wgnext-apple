@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "Ayarlar";
 "tunnelsListCenteredAddTunnelButtonTitle" = "Tünel ekle";
 "tunnelsListSwipeDeleteButtonTitle" = "Sil";
@@ -203,7 +203,7 @@
 "settingsViewTitle" = "Ayarlar";
 
 "settingsSectionTitleAbout" = "Hakkında";
-"settingsVersionKeyWireGuardForIOS" = "iOS için WireGuard";
+"settingsVersionKeyWireGuardForIOS" = "iOS için WGnext";
 "settingsVersionKeyWireGuardGoBackend" = "WireGuard Go Backend";
 
 "settingsSectionTitleExportConfigurations" = "Yapılandırmaları dışa aktar";
@@ -294,16 +294,16 @@
 "macMenuNetworks (%@)" = "Ağlar: %@";
 "macMenuNetworksNone" = "Ağlar: Yok";
 
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macMenuManageTunnels" = "Tünelleri Yönet";
 "macMenuImportTunnels" = "Tünelleri Dosyadan İçe Aktar…";
 "macMenuAddEmptyTunnel" = "Boş Tünel Ekle…";
 "macMenuViewLog" = "Günlüğü Görüntüle";
 "macMenuExportTunnels" = "Tünelleri Zip'e Aktar…";
-"macMenuAbout" = "WireGuard Hakkında";
-"macMenuQuit" = "WireGuard’dan Çık";
+"macMenuAbout" = "WGnext Hakkında";
+"macMenuQuit" = "WGnext’dan Çık";
 
-"macMenuHideApp" = "WireGuard’ı Gizle";
+"macMenuHideApp" = "WGnext’ı Gizle";
 "macMenuHideOtherApps" = "Diğerlerini Gizle";
 "macMenuShowAllApps" = "Tümünü Göster";
 
@@ -327,7 +327,7 @@
 
 // Mac manage tunnels window
 
-"macWindowTitleManageTunnels" = "WireGuard Tünellerini Yönet";
+"macWindowTitleManageTunnels" = "WGnext Tünellerini Yönet";
 
 "macDeleteTunnelConfirmationAlertMessage (%@)" = "‘%@’ silmek istediğinizden emin misiniz?";
 "macDeleteMultipleTunnelsConfirmationAlertMessage (%d)" = "%d tünellerini silmek istediğinizden emin misiniz?";
@@ -405,13 +405,13 @@
 
 // Mac alert
 
-"macConfirmAndQuitAlertMessage" = "Tünel yöneticisini kapatmak mı yoksa WireGuard’dan tamamen çıkmak mı istiyorsunuz?";
-"macConfirmAndQuitAlertInfo" = "Tünel yöneticisini kapatırsanız, WireGuard menü çubuğu simgesinden kullanılmaya devam edecektir.";
-"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Tünel yöneticisini kapatırsanız, WireGuard menü çubuğu simgesinden kullanılmaya devam edecektir.\n\nWireGuard’dan tamamen çıkarsanız, o anda aktif olan tünelin ('%@') siz bu uygulamadan veya Sistem Tercihlerindeki Ağ paneli aracılığıyla devre dışı bırakana kadar hâlâ etkin kalacağını unutmayın.";
-"macConfirmAndQuitAlertQuitWireGuard" = "WireGuard’dan Çık";
+"macConfirmAndQuitAlertMessage" = "Tünel yöneticisini kapatmak mı yoksa WGnext’dan tamamen çıkmak mı istiyorsunuz?";
+"macConfirmAndQuitAlertInfo" = "Tünel yöneticisini kapatırsanız, WGnext menü çubuğu simgesinden kullanılmaya devam edecektir.";
+"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Tünel yöneticisini kapatırsanız, WGnext menü çubuğu simgesinden kullanılmaya devam edecektir.\n\nWGnext’dan tamamen çıkarsanız, o anda aktif olan tünelin ('%@') siz bu uygulamadan veya Sistem Tercihlerindeki Ağ paneli aracılığıyla devre dışı bırakana kadar hâlâ etkin kalacağını unutmayın.";
+"macConfirmAndQuitAlertQuitWGnext" = "WGnext’dan Çık";
 "macConfirmAndQuitAlertCloseWindow" = "Tünel Yöneticisini Kapat";
 
-"macAppExitingWithActiveTunnelMessage" = "WireGuard aktif bir tünelle çıkıyor";
+"macAppExitingWithActiveTunnelMessage" = "WGnext aktif bir tünelle çıkıyor";
 "macAppExitingWithActiveTunnelInfo" = "Tünel, çıktıktan sonra aktif kalacaktır. Bu uygulamayı yeniden açarak veya Sistem Tercihlerindeki Ağ panelinden devre dışı bırakabilirsiniz.";
 
 // Mac tooltip
@@ -434,7 +434,7 @@
 
 // Mac App Store updating alert
 
-"macAppStoreUpdatingAlertMessage" = "App Store, WireGuard’ı güncellemek istiyor";
+"macAppStoreUpdatingAlertMessage" = "App Store, WGnext’ı güncellemek istiyor";
 "macAppStoreUpdatingAlertInfoWithOnDemand (%@)" = "Lütfen ‘%@’ tüneli için isteğe bağlı’yı kapatın, devre dışı bırakın ve ardından App Store’da güncellemeye devam edin.";
 "macAppStoreUpdatingAlertInfoWithoutOnDemand (%@)" = "Lütfen ‘%@’ tünelini devre dışı bırakın ve ardından App Store’da güncellemeye devam edin.";
 

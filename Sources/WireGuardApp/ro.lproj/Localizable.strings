@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "Setări";
 "tunnelsListCenteredAddTunnelButtonTitle" = "Adaugă un tunel";
 "tunnelsListSwipeDeleteButtonTitle" = "Ștergere";
@@ -203,7 +203,7 @@
 "settingsViewTitle" = "Setări";
 
 "settingsSectionTitleAbout" = "Despre";
-"settingsVersionKeyWireGuardForIOS" = "WireGuard pentru iOS";
+"settingsVersionKeyWireGuardForIOS" = "WGnext pentru iOS";
 "settingsVersionKeyWireGuardGoBackend" = "Bibliotecă Go WireGuard";
 
 "settingsSectionTitleExportConfigurations" = "Exportare configurații";
@@ -294,16 +294,16 @@
 "macMenuNetworks (%@)" = "Rețele: %@";
 "macMenuNetworksNone" = "Rețele: niciuna";
 
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macMenuManageTunnels" = "Gestionare tuneluri";
 "macMenuImportTunnels" = "Importare tunel(uri) din fișier…";
 "macMenuAddEmptyTunnel" = "Adăugare tunel gol…";
 "macMenuViewLog" = "Vizualizare jurnal";
 "macMenuExportTunnels" = "Exportare tuneluri în zip…";
-"macMenuAbout" = "Despre WireGuard";
-"macMenuQuit" = "Ieși din WireGuard";
+"macMenuAbout" = "Despre WGnext";
+"macMenuQuit" = "Ieși din WGnext";
 
-"macMenuHideApp" = "Ascunde WireGuard";
+"macMenuHideApp" = "Ascunde WGnext";
 "macMenuHideOtherApps" = "Ascunde restul";
 "macMenuShowAllApps" = "Afișare toate";
 
@@ -327,7 +327,7 @@
 
 // Mac manage tunnels window
 
-"macWindowTitleManageTunnels" = "Gestionare tuneluri WireGuard";
+"macWindowTitleManageTunnels" = "Gestionare tuneluri WGnext";
 
 "macDeleteTunnelConfirmationAlertMessage (%@)" = "Ești sigur că dorești să ștergi „%@”?";
 "macDeleteMultipleTunnelsConfirmationAlertMessage (%d)" = "Ești sigur că dorești să ștergi %d tuneluri?";
@@ -405,13 +405,13 @@
 
 // Mac alert
 
-"macConfirmAndQuitAlertMessage" = "Dorești să închizi managerul de tuneluri sau să ieși complet din WireGuard?";
-"macConfirmAndQuitAlertInfo" = "Dacă închizi managerul de tuneluri, WireGuard va fi în continuare disponibil din pictograma barei de meniu.";
-"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Dacă închizi managerul de tuneluri, WireGuard va fi în continuare disponibil din pictograma barei de meniu.\n\nReține că dacă ieși complet din WireGuard, tunelul activ în prezent („%@”) va rămâne activ până îl dezactivezi din această aplicație sau prin intermediul panoului Rețea din preferințele de sistem.";
-"macConfirmAndQuitAlertQuitWireGuard" = "Ieși din WireGuard";
+"macConfirmAndQuitAlertMessage" = "Dorești să închizi managerul de tuneluri sau să ieși complet din WGnext?";
+"macConfirmAndQuitAlertInfo" = "Dacă închizi managerul de tuneluri, WGnext va fi în continuare disponibil din pictograma barei de meniu.";
+"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Dacă închizi managerul de tuneluri, WGnext va fi în continuare disponibil din pictograma barei de meniu.\n\nReține că dacă ieși complet din WGnext, tunelul activ în prezent („%@”) va rămâne activ până îl dezactivezi din această aplicație sau prin intermediul panoului Rețea din preferințele de sistem.";
+"macConfirmAndQuitAlertQuitWGnext" = "Ieși din WGnext";
 "macConfirmAndQuitAlertCloseWindow" = "Închide managerul de tuneluri";
 
-"macAppExitingWithActiveTunnelMessage" = "WireGuard iese cu un tunel activ";
+"macAppExitingWithActiveTunnelMessage" = "WGnext iese cu un tunel activ";
 "macAppExitingWithActiveTunnelInfo" = "Tunelul va rămâne activ după ieșire. Îl poți dezactiva prin redeschiderea acestei aplicații sau prin intermediul panoului Rețea din preferințele de sistem.";
 
 // Mac tooltip
@@ -434,7 +434,7 @@
 
 // Mac App Store updating alert
 
-"macAppStoreUpdatingAlertMessage" = "App Store dorește să actualizeze WireGuard";
+"macAppStoreUpdatingAlertMessage" = "App Store dorește să actualizeze WGnext";
 "macAppStoreUpdatingAlertInfoWithOnDemand (%@)" = "Oprește opțiunea „la cerere” pentru tunelul „%@”. Dezactiveaz-o, apoi continuă cu actualizarea în App Store.";
 "macAppStoreUpdatingAlertInfoWithoutOnDemand (%@)" = "Dezactivează tunelul „%@”, iar apoi continuă cu actualizarea în App Store.";
 

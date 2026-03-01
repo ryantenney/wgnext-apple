@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "Nastavitve";
 "tunnelsListCenteredAddTunnelButtonTitle" = "Dodaj tunel";
 "tunnelsListSwipeDeleteButtonTitle" = "Izbriši";
@@ -203,7 +203,7 @@
 "settingsViewTitle" = "Nastavitve";
 
 "settingsSectionTitleAbout" = "O programu";
-"settingsVersionKeyWireGuardForIOS" = "WireGuard za iOS";
+"settingsVersionKeyWireGuardForIOS" = "WGnext za iOS";
 "settingsVersionKeyWireGuardGoBackend" = "Verzija wireguard-go";
 
 "settingsSectionTitleExportConfigurations" = "Izvozi konfiguracije";
@@ -294,16 +294,16 @@
 "macMenuNetworks (%@)" = "Omrežja: %@";
 "macMenuNetworksNone" = "Ni omrežij";
 
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macMenuManageTunnels" = "Upravljaj tunele";
 "macMenuImportTunnels" = "Uvozi tunele iz datoteke …";
 "macMenuAddEmptyTunnel" = "Dodaj prazen tunel …";
 "macMenuViewLog" = "Pokaži dnevnik";
 "macMenuExportTunnels" = "Izvozi tunele v datoteko zip …";
-"macMenuAbout" = "O aplikaciji WireGuard";
-"macMenuQuit" = "Končaj WireGuard";
+"macMenuAbout" = "O aplikaciji WGnext";
+"macMenuQuit" = "Končaj WGnext";
 
-"macMenuHideApp" = "Skrij WireGuard";
+"macMenuHideApp" = "Skrij WGnext";
 "macMenuHideOtherApps" = "Skrij druge";
 "macMenuShowAllApps" = "Prikaži vse";
 
@@ -327,7 +327,7 @@
 
 // Mac manage tunnels window
 
-"macWindowTitleManageTunnels" = "Upravljaj tunele WireGuard";
+"macWindowTitleManageTunnels" = "Upravljaj tunele WGnext";
 
 "macDeleteTunnelConfirmationAlertMessage (%@)" = "Ali ste prepričani, da želite izbrisati \"%@\"?";
 "macDeleteMultipleTunnelsConfirmationAlertMessage (%d)" = "Ali ste prepričani, da želite izbrisati izbrane tunele?";
@@ -405,13 +405,13 @@
 
 // Mac alert
 
-"macConfirmAndQuitAlertMessage" = "Ali želite zapreti upravljalca tunelov ali končati WireGuard v celoti?";
-"macConfirmAndQuitAlertInfo" = "Če zaprete upravljalca tunelov, bo WireGuard še naprej na voljo preko ikone v meniju.";
-"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Če zaprete upravljalca tunelov, bo WireGuard še naprej na voljo preko ikone v meniju.\n\nPomnite: če zaprete WireGuard bo trenutni aktiven tunel (\"%@\") ostal aktiven dokler ga ne deaktivirate preko te aplikacije ali preko omrežne plošče v sistemskih nastavitvah.";
-"macConfirmAndQuitAlertQuitWireGuard" = "Končaj WireGuard";
+"macConfirmAndQuitAlertMessage" = "Ali želite zapreti upravljalca tunelov ali končati WGnext v celoti?";
+"macConfirmAndQuitAlertInfo" = "Če zaprete upravljalca tunelov, bo WGnext še naprej na voljo preko ikone v meniju.";
+"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Če zaprete upravljalca tunelov, bo WGnext še naprej na voljo preko ikone v meniju.\n\nPomnite: če zaprete WGnext bo trenutni aktiven tunel (\"%@\") ostal aktiven dokler ga ne deaktivirate preko te aplikacije ali preko omrežne plošče v sistemskih nastavitvah.";
+"macConfirmAndQuitAlertQuitWGnext" = "Končaj WGnext";
 "macConfirmAndQuitAlertCloseWindow" = "Zapri upravljalca tunelov";
 
-"macAppExitingWithActiveTunnelMessage" = "WireGuard se končuje z aktivnim tunelom";
+"macAppExitingWithActiveTunnelMessage" = "WGnext se končuje z aktivnim tunelom";
 "macAppExitingWithActiveTunnelInfo" = "Tunel bo ostal aktiven po izhodu. Lahko ga onemogočite po ponovnem odprtju aplikacije ali preko omrežne plošče v sistemskih nastavitvah.";
 
 // Mac tooltip
@@ -434,7 +434,7 @@
 
 // Mac App Store updating alert
 
-"macAppStoreUpdatingAlertMessage" = "App Store bi rad posodobil WireGuard";
+"macAppStoreUpdatingAlertMessage" = "App Store bi rad posodobil WGnext";
 "macAppStoreUpdatingAlertInfoWithOnDemand (%@)" = "Onemogočite aktivacijo na zahtevo za tunel \"%@\", ga deaktivirajte in nadaljujte posodobitev iz trgovine App Store.";
 "macAppStoreUpdatingAlertInfoWithoutOnDemand (%@)" = "Prosimo deaktivirajte tunel \"%@\" in nadaljuje posodobitev v trgovini App Store.";
 

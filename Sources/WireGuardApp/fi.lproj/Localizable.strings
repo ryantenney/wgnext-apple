@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "Asetukset";
 "tunnelsListCenteredAddTunnelButtonTitle" = "Lisää tunneli";
 "tunnelsListSwipeDeleteButtonTitle" = "Poista";
@@ -199,7 +199,7 @@
 "settingsViewTitle" = "Asetukset";
 
 "settingsSectionTitleAbout" = "Tietoa";
-"settingsVersionKeyWireGuardForIOS" = "WireGuard iOS:lle";
+"settingsVersionKeyWireGuardForIOS" = "WGnext iOS:lle";
 "settingsVersionKeyWireGuardGoBackend" = "WireGuard Go -moottori";
 
 "settingsSectionTitleTunnelLog" = "Loki";
@@ -247,16 +247,16 @@
 "macMenuNetworks (%@)" = "Verkot: %@";
 "macMenuNetworksNone" = "Verkot: Ei mitään";
 
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macMenuManageTunnels" = "Hallitse tunneleita";
 "macMenuImportTunnels" = "Tuo tunneli(t) tiedostosta…";
 "macMenuAddEmptyTunnel" = "Lisää tyhjä tunneli…";
 "macMenuViewLog" = "Näytä loki";
 "macMenuExportTunnels" = "Vie tunnelit Zippinä…";
-"macMenuAbout" = "Tietoa WireGuardista";
-"macMenuQuit" = "Sulje WireGuard";
+"macMenuAbout" = "Tietoa WGnextista";
+"macMenuQuit" = "Sulje WGnext";
 
-"macMenuHideApp" = "Piilota WireGuard";
+"macMenuHideApp" = "Piilota WGnext";
 "macMenuHideOtherApps" = "Piilota muut";
 "macMenuShowAllApps" = "Näytä kaikki";
 
@@ -280,7 +280,7 @@
 
 // Mac manage tunnels window
 
-"macWindowTitleManageTunnels" = "Hallitse WireGuard tunneleita";
+"macWindowTitleManageTunnels" = "Hallitse WGnext tunneleita";
 
 "macDeleteTunnelConfirmationAlertMessage (%@)" = "Oletko varma, että haluat poistaa \"%@\"?";
 "macDeleteMultipleTunnelsConfirmationAlertMessage (%d)" = "Haluatko varmasti poistaa %d kohdetta?";
@@ -334,7 +334,7 @@
 "macAppVersion (%@)" = "Sovelluksen versio: %@";
 "macGoBackendVersion (%@)" = "Go -moottorin versio: %@";
 "iosViewPrivateData" = "Todenna nähdäksesi tunnelin yksityiset avaimet.";
-"macConfirmAndQuitAlertQuitWireGuard" = "Sulje WireGuard";
+"macConfirmAndQuitAlertQuitWGnext" = "Sulje WGnext";
 "macConfirmAndQuitAlertCloseWindow" = "Sulje tunneleiden hallinta";
 
 // Mac tooltip
@@ -351,19 +351,19 @@
 
 // Mac App Store updating alert
 
-"macAppStoreUpdatingAlertMessage" = "App Store haluaa päivittää WireGuardin";
+"macAppStoreUpdatingAlertMessage" = "App Store haluaa päivittää WGnextin";
 
 // Donation
 
 "donateLink" = "♥ Lahjoita WireGuard projektille";
 "macAlertNoInterface" = "Configuration must have an ‘Interface’ section.";
-"macConfirmAndQuitAlertInfo" = "If you close the tunnels manager, WireGuard will continue to be available from the menu bar icon.";
+"macConfirmAndQuitAlertInfo" = "If you close the tunnels manager, WGnext will continue to be available from the menu bar icon.";
 "macUnusableTunnelInfo" = "In case this tunnel was created by another user, only that user can view, edit, or activate this tunnel.";
 "alertTunnelActivationErrorTunnelIsNotInactiveMessage" = "The tunnel is already active or in the process of being activated";
 "alertTunnelActivationSetNetworkSettingsMessage" = "Unable to apply network settings to tunnel object.";
 "alertCantOpenInputConfFileTitle" = "Unable to import from file";
 "alertScanQRCodeInvalidQRCodeMessage" = "The scanned QR code is not a valid WireGuard configuration";
-"macConfirmAndQuitAlertMessage" = "Do you want to close the tunnels manager or quit WireGuard entirely?";
+"macConfirmAndQuitAlertMessage" = "Do you want to close the tunnels manager or quit WGnext entirely?";
 "alertTunnelActivationSavedConfigFailureMessage" = "Unable to retrieve tunnel information from the saved configuration.";
 "macAlertInfoUnrecognizedInterfaceKey" = "Valid keys are: ‘PrivateKey’, ‘ListenPort’, ‘Address’, ‘DNS’ and ‘MTU’.";
 "alertTunnelNameEmptyMessage" = "Cannot create tunnel with an empty name";
@@ -379,7 +379,7 @@
 "alertCantOpenOutputZipFileForWritingMessage" = "Could not open zip file for writing.";
 "alertSystemErrorOnRemoveTunnelTitle" = "Unable to remove tunnel";
 "alertSystemErrorOnModifyTunnelTitle" = "Unable to modify tunnel";
-"macAppExitingWithActiveTunnelMessage" = "WireGuard is exiting with an active tunnel";
+"macAppExitingWithActiveTunnelMessage" = "WGnext is exiting with an active tunnel";
 "alertSystemErrorMessageTunnelConfigurationStale" = "The configuration is stale.";
 "alertTunnelDNSFailureMessage" = "One or more endpoint domains could not be resolved.";
 "alertTunnelDNSFailureTitle" = "DNS resolution failure";

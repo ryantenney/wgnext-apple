@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "설정";
 "tunnelsListSwipeDeleteButtonTitle" = "삭제";
 "tunnelsListSelectButtonTitle" = "선택";
@@ -46,7 +46,7 @@
 "alertInvalidInterfaceMessageListenPortInvalid" = "Interface’s listen port must be between 0 and 65535, or unspecified";
 "addPeerButtonTitle" = "Add peer";
 "tunnelHandshakeTimestampSystemClockBackward" = "(System clock wound backwards)";
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macAlertNoInterface" = "Configuration must have an ‘Interface’ section.";
 "macNameFieldExportZip" = "Export tunnels to:";
 "editTunnelViewTitle" = "Edit configuration";
@@ -55,8 +55,8 @@
 "macEditDiscard" = "Discard";
 "tunnelPeerPresharedKeyEnabled" = "enabled";
 "macSheetButtonExportZip" = "Save";
-"macWindowTitleManageTunnels" = "Manage WireGuard Tunnels";
-"macConfirmAndQuitAlertInfo" = "If you close the tunnels manager, WireGuard will continue to be available from the menu bar icon.";
+"macWindowTitleManageTunnels" = "Manage WGnext Tunnels";
+"macConfirmAndQuitAlertInfo" = "If you close the tunnels manager, WGnext will continue to be available from the menu bar icon.";
 "macUnusableTunnelInfo" = "In case this tunnel was created by another user, only that user can view, edit, or activate this tunnel.";
 "alertTunnelActivationErrorTunnelIsNotInactiveMessage" = "The tunnel is already active or in the process of being activated";
 "macToggleStatusButtonReasserting" = "Reactivating…";
@@ -64,7 +64,7 @@
 "macMenuExportTunnels" = "Export Tunnels to Zip…";
 "macMenuShowAllApps" = "Show All";
 "alertCantOpenInputConfFileTitle" = "Unable to import from file";
-"macMenuHideApp" = "Hide WireGuard";
+"macMenuHideApp" = "Hide WGnext";
 "macDeleteTunnelConfirmationAlertInfo" = "You cannot undo this action.";
 "macDeleteTunnelConfirmationAlertButtonTitleDeleting" = "Deleting…";
 "tunnelPeerPersistentKeepalive" = "Persistent keepalive";
@@ -75,7 +75,7 @@
 "tunnelOnDemandOptionWiFiOnly" = "Wi-Fi only";
 "macNameFieldExportLog" = "Save log to:";
 "alertSystemErrorOnAddTunnelTitle" = "Unable to create tunnel";
-"macConfirmAndQuitAlertMessage" = "Do you want to close the tunnels manager or quit WireGuard entirely?";
+"macConfirmAndQuitAlertMessage" = "Do you want to close the tunnels manager or quit WGnext entirely?";
 "alertTunnelActivationSavedConfigFailureMessage" = "Unable to retrieve tunnel information from the saved configuration.";
 "tunnelOnDemandOptionOff" = "Off";
 "tunnelOnDemandSectionTitleSelectedSSIDs" = "SSIDs";
@@ -89,7 +89,7 @@
 "tunnelOnDemandExceptTheseSSIDs" = "Except these SSIDs";
 "alertUnableToWriteLogMessage" = "Unable to write logs to file";
 "macToggleStatusButtonActivating" = "Activating…";
-"macMenuQuit" = "Quit WireGuard";
+"macMenuQuit" = "Quit WGnext";
 "macMenuAddEmptyTunnel" = "Add Empty Tunnel…";
 "tunnelStatusDeactivating" = "Deactivating";
 "alertInvalidInterfaceTitle" = "Invalid interface";
@@ -153,7 +153,7 @@
 "alertInvalidPeerMessagePublicKeyInvalid" = "Peer’s public key must be a 32-byte key in base64 encoding";
 "tunnelOnDemandCellular" = "Cellular";
 "tunnelOnDemandKey" = "On demand";
-"macConfirmAndQuitAlertQuitWireGuard" = "Quit WireGuard";
+"macConfirmAndQuitAlertQuitWGnext" = "Quit WGnext";
 "alertSystemErrorOnRemoveTunnelTitle" = "Unable to remove tunnel";
 "macFieldOnDemand" = "On-Demand:";
 "macMenuCloseWindow" = "Close Window";
@@ -165,7 +165,7 @@
 "settingsSectionTitleTunnelLog" = "Log";
 "macMenuManageTunnels" = "Manage Tunnels";
 "macButtonImportTunnels" = "Import tunnel(s) from file";
-"macAppExitingWithActiveTunnelMessage" = "WireGuard is exiting with an active tunnel";
+"macAppExitingWithActiveTunnelMessage" = "WGnext is exiting with an active tunnel";
 "tunnelSectionTitlePeer" = "Peer";
 "alertSystemErrorMessageTunnelConfigurationStale" = "The configuration is stale.";
 "tunnelPeerPreSharedKey" = "Preshared key";
@@ -185,12 +185,12 @@
 "alertScanQRCodeUnreadableQRCodeMessage" = "The scanned code could not be read";
 "alertSystemErrorOnListingTunnelsTitle" = "Unable to list tunnels";
 "tunnelPeerExcludePrivateIPs" = "Exclude private IPs";
-"settingsVersionKeyWireGuardForIOS" = "WireGuard for iOS";
+"settingsVersionKeyWireGuardForIOS" = "WGnext for iOS";
 "macMenuPaste" = "Paste";
 "tunnelInterfaceAddresses" = "Addresses";
 "macAlertMultipleInterfaces" = "Configuration must have only one ‘Interface’ section.";
 "scanQRCodeViewTitle" = "Scan QR code";
-"macAppStoreUpdatingAlertMessage" = "App Store would like to update WireGuard";
+"macAppStoreUpdatingAlertMessage" = "App Store would like to update WGnext";
 "macUnusableTunnelMessage" = "The configuration for this tunnel cannot be found in the keychain.";
 "macToolTipEditTunnel" = "Edit tunnel (⌘E)";
 "tunnelEditPlaceholderTextStronglyRecommended" = "Strongly recommended";
@@ -231,7 +231,7 @@
 "alertTunnelAlreadyExistsWithThatNameMessage" = "A tunnel with that name already exists";
 "macLogColumnTitleLogMessage" = "Log message";
 "iosExportPrivateData" = "Authenticate to export tunnel private keys.";
-"macMenuAbout" = "About WireGuard";
+"macMenuAbout" = "About WGnext";
 "macSheetButtonImport" = "Import";
 "alertScanQRCodeNamePromptTitle" = "Please name the scanned tunnel";
 "alertUnableToRemovePreviousLogMessage" = "The pre-existing log could not be cleared";

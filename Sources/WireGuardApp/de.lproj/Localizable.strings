@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "Einstellungen";
 "tunnelsListCenteredAddTunnelButtonTitle" = "Tunnel hinzufügen";
 "tunnelsListSwipeDeleteButtonTitle" = "Entfernen";
@@ -203,7 +203,7 @@
 "settingsViewTitle" = "Einstellungen";
 
 "settingsSectionTitleAbout" = "Über";
-"settingsVersionKeyWireGuardForIOS" = "WireGuard für iOS";
+"settingsVersionKeyWireGuardForIOS" = "WGnext für iOS";
 "settingsVersionKeyWireGuardGoBackend" = "WireGuard Go Backend";
 
 "settingsSectionTitleExportConfigurations" = "Konfigurationen exportieren";
@@ -294,16 +294,16 @@
 "macMenuNetworks (%@)" = "Netzwerke:%@";
 "macMenuNetworksNone" = "Keine Netzwerke.";
 
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macMenuManageTunnels" = "Tunnel verwalten";
 "macMenuImportTunnels" = "Tunnel aus Datei importieren…";
 "macMenuAddEmptyTunnel" = "Leeren Tunnel hinzufügen…";
 "macMenuViewLog" = "Protokoll anzeigen";
 "macMenuExportTunnels" = "Tunnel als Zip exportieren…";
-"macMenuAbout" = "Über WireGuard";
-"macMenuQuit" = "WireGuard beenden";
+"macMenuAbout" = "Über WGnext";
+"macMenuQuit" = "WGnext beenden";
 
-"macMenuHideApp" = "WireGuard ausblenden";
+"macMenuHideApp" = "WGnext ausblenden";
 "macMenuHideOtherApps" = "Andere ausblenden";
 "macMenuShowAllApps" = "Alle anzeigen";
 
@@ -327,7 +327,7 @@
 
 // Mac manage tunnels window
 
-"macWindowTitleManageTunnels" = "WireGuard-Tunnel verwalten";
+"macWindowTitleManageTunnels" = "WGnext-Tunnel verwalten";
 
 "macDeleteTunnelConfirmationAlertMessage (%@)" = "Möchten Sie ’%@’ wirklich löschen?";
 "macDeleteMultipleTunnelsConfirmationAlertMessage (%d)" = "Möchten Sie diese %d Tunnel wirklich löschen?";
@@ -405,13 +405,13 @@
 
 // Mac alert
 
-"macConfirmAndQuitAlertMessage" = "Möchten Sie den Tunnelmanager schließen oder WireGuard ganz beenden?";
-"macConfirmAndQuitAlertInfo" = "Wenn Sie den Tunnelmanager schließen, wird WireGuard weiterhin über das Symbol in der Menüleiste zur Verfügung stehen.";
-"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Wenn Sie den Tunnelmanager schließen, wird WireGuard weiterhin über das Symbol in der Menüleiste zur Verfügung stehen.\n\nBeachten Sie, dass der derzeit aktive Tunnel ('%@') weiterhin aktiv bleibt (auch wenn Sie WireGuard ganz beenden), bis Sie ihn von dieser Anwendung oder über das Netzwerk-Panel in den Systemeinstellungen deaktivieren.";
-"macConfirmAndQuitAlertQuitWireGuard" = "WireGuard beenden";
+"macConfirmAndQuitAlertMessage" = "Möchten Sie den Tunnelmanager schließen oder WGnext ganz beenden?";
+"macConfirmAndQuitAlertInfo" = "Wenn Sie den Tunnelmanager schließen, wird WGnext weiterhin über das Symbol in der Menüleiste zur Verfügung stehen.";
+"macConfirmAndQuitInfoWithActiveTunnel (%@)" = "Wenn Sie den Tunnelmanager schließen, wird WGnext weiterhin über das Symbol in der Menüleiste zur Verfügung stehen.\n\nBeachten Sie, dass der derzeit aktive Tunnel ('%@') weiterhin aktiv bleibt (auch wenn Sie WGnext ganz beenden), bis Sie ihn von dieser Anwendung oder über das Netzwerk-Panel in den Systemeinstellungen deaktivieren.";
+"macConfirmAndQuitAlertQuitWGnext" = "WGnext beenden";
 "macConfirmAndQuitAlertCloseWindow" = "Tunnelverwaltung schließen";
 
-"macAppExitingWithActiveTunnelMessage" = "WireGuard wird beendet, mit einem aktiven Tunnel";
+"macAppExitingWithActiveTunnelMessage" = "WGnext wird beendet, mit einem aktiven Tunnel";
 "macAppExitingWithActiveTunnelInfo" = "Der Tunnel bleibt nach dem Beenden aktiv. Sie können ihn deaktivieren, indem Sie diese Anwendung erneut öffnen oder in den Systemeinstellungen unter \"Netzwerk\" aktivieren.";
 
 // Mac tooltip
@@ -434,7 +434,7 @@
 
 // Mac App Store updating alert
 
-"macAppStoreUpdatingAlertMessage" = "App Store möchte WireGuard aktualisieren";
+"macAppStoreUpdatingAlertMessage" = "App Store möchte WGnext aktualisieren";
 "macAppStoreUpdatingAlertInfoWithOnDemand (%@)" = "Bitte deaktivieren Sie \"on-demand\" für den Tunnel ‘%@', deaktivieren Sie ihn und fahren Sie dann mit der Aktualisierung im App Store fort.";
 "macAppStoreUpdatingAlertInfoWithoutOnDemand (%@)" = "Bitte deaktivieren Sie den Tunnel ‘%@’ und fahren Sie dann mit der Aktualisierung im App Store fort.";
 

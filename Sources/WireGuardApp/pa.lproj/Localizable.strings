@@ -203,7 +203,7 @@
 "settingsViewTitle" = "ਸੈਟਿੰਗਾਂ";
 
 "settingsSectionTitleAbout" = "ਇਸ ਬਾਰੇ";
-"settingsVersionKeyWireGuardForIOS" = "iOS ਲਈ ਵਾਇਰਗਾਰਡ";
+"settingsVersionKeyWireGuardForIOS" = "iOS ਲਈ WGnext";
 "settingsVersionKeyWireGuardGoBackend" = "ਵਾਇਰਗਾਰਡ ਗੋ ਬੈਕਐਂਡ";
 
 "settingsSectionTitleExportConfigurations" = "ਸੰਰਚਨਾ ਬਰਾਮਦ ਕਰੋ";
@@ -408,7 +408,7 @@
 "macConfirmAndQuitAlertMessage" = "ਕੀ ਤੁਸੀਂ ਟਨਲ ਮੈਨੇਜਰ ਨੂੰ ਬੰਦ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ ਜਾਂ ਪੂਰੇ ਵਾਇਰਗਾਰਡ ਤੋਂ ਬਾਹਰ ਜਾਣਾ ਚਾਹੁੰਦੇ ਹੋ?";
 "macConfirmAndQuitAlertInfo" = "ਜੇ ਤੁਸੀਂ ਟਨਲ ਮੈਨੇਜਰ ਬੰਦ ਕਰਦੇ ਹੋ ਤਾਂ ਵਾਇਰਗਾਰਡ ਮੇਨੂ ਪੱਟੀ ਆਈਕਾਨ ਵਿੱਚ ਉਪਲੱਬਧ ਰਹੇਗਾ।";
 "macConfirmAndQuitInfoWithActiveTunnel (%@)" = "ਜੇ ਤੁਸੀਂ ਟਨਲ ਮੈਨੇਜਰ ਬੰਦ ਕਰਦੇ ਹੋ ਤਾਂ ਵਾਇਰਗਾਰਡ ਮੇਨੂ ਪੱਟੀ ਆਈਕਾਨ ਵਿੱਚ ਉਪਲੱਬਧ ਰਹੇਗਾ।\n\nਯਾਦ ਰੱਕੋ ਕਿ ਜੇ ਤੁਸੀਂ ਪੂਰੇ ਵਾਇਰਗਾਰਡ ਨੂੰ ਬੰਦ ਕਰਦੇ ਹੋ ਤਾਂ ਪੂਰੀ ਸਰਗਰਮ ਟਨਲ ('%@') ਫੇਰ ਵੀ ਸਰਗਰਮ ਰਹੇਗਾ, ਜਦੋਂ ਤੱਕ ਕਿ ਤੁਸੀਂ ਇਸ ਨੂੰ ਐਪਲੀਕੇਸ਼ਨ ਤੋਂ ਜਾਂ ਸਿਸਟਮ ਪਸੰਦਾਂ (System Preferences) ਵਿੱਚ ਨੈੱਟਵਰਕ (Network) ਪੈਨਲ ਰਾਹੀਂ ਨਾ-ਸਰਗਰਮ ਕਰ ਦਿੰਦੇ ਹੋ।";
-"macConfirmAndQuitAlertQuitWireGuard" = "ਵਾਇਰਗਾਰਡ ਚੋਂ ਬਾਹਰ ਜਾਓ";
+"macConfirmAndQuitAlertQuitWGnext" = "ਵਾਇਰਗਾਰਡ ਚੋਂ ਬਾਹਰ ਜਾਓ";
 "macConfirmAndQuitAlertCloseWindow" = "ਟਨਲ ਮੈਨੇਜਰ ਬੰਦ ਕਰੋ";
 
 "macAppExitingWithActiveTunnelMessage" = "ਵਾਇਰਗਾਰਡ ਸਰਗਰਮ ਟਨਲ ਨਾਲ ਮੌਜੂਦ ਹੈ";

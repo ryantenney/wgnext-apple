@@ -9,7 +9,7 @@
 
 // Tunnels list UI
 
-"tunnelsListTitle" = "WireGuard";
+"tunnelsListTitle" = "WGnext";
 "tunnelsListSettingsButtonTitle" = "Preferencias";
 "tunnelsListCenteredAddTunnelButtonTitle" = "Agregar un túnel";
 "tunnelsListSwipeDeleteButtonTitle" = "Eliminar";
@@ -203,7 +203,7 @@
 "settingsViewTitle" = "Configuración";
 
 "settingsSectionTitleAbout" = "Acerca de";
-"settingsVersionKeyWireGuardForIOS" = "WireGuard para iOS";
+"settingsVersionKeyWireGuardForIOS" = "WGnext para iOS";
 
 "settingsSectionTitleExportConfigurations" = "Exportar configuraciones";
 "settingsExportZipButtonTitle" = "Exportar archivo zip";
@@ -261,14 +261,14 @@
 "alertSystemErrorMessageTunnelConnectionFailed" = "La conexión ha fallado.";
 "alertSystemErrorMessageTunnelConfigurationUnknown" = "Error desconocido de sistema.";
 
-"macMenuTitle" = "WireGuard";
+"macMenuTitle" = "WGnext";
 "macMenuManageTunnels" = "Gestionar túneles";
 "macMenuImportTunnels" = "Importar túnel(es) desde archivo";
 "macMenuViewLog" = "Ver registro";
-"macMenuAbout" = "Acerca de WireGuard";
-"macMenuQuit" = "Salir de WireGuard";
+"macMenuAbout" = "Acerca de WGnext";
+"macMenuQuit" = "Salir de WGnext";
 
-"macMenuHideApp" = "Ocultar WireGuard";
+"macMenuHideApp" = "Ocultar WGnext";
 "macMenuShowAllApps" = "Mostrar todo";
 
 "macMenuFile" = "Archivo";
@@ -290,7 +290,7 @@
 
 // Mac manage tunnels window
 
-"macWindowTitleManageTunnels" = "Gestionar Túneles WireGuard";
+"macWindowTitleManageTunnels" = "Gestionar Túneles WGnext";
 
 "macDeleteTunnelConfirmationAlertMessage (%@)" = "¿Estás seguro que deseas eliminar \"%@\"?";
 "macDeleteMultipleTunnelsConfirmationAlertMessage (%d)" = "¿Está seguro que desea eliminar %d túneles?";
@@ -329,7 +329,7 @@
 "macAlertEndpointInvalid (%@)" = "Endpoint ‘%@’ no es válido";
 "macAlertPersistentKeepliveInvalid (%@)" = "El valor keepalive persistente '%@' no es válido";
 "macAlertInfoUnrecognizedPeerKey" = "Las claves válidas son: ‘PublicKey’, ‘PresharedKey’, ‘AllowedIPs’, ‘Endpoint’ y ‘PersistentKeepalive’";
-"macConfirmAndQuitAlertQuitWireGuard" = "Salir de WireGuard";
+"macConfirmAndQuitAlertQuitWGnext" = "Salir de WGnext";
 "macConfirmAndQuitAlertCloseWindow" = "Cerrar Gestor de túneles";
 
 // Mac tooltip
@@ -351,19 +351,19 @@
 
 // Mac App Store updating alert
 
-"macAppStoreUpdatingAlertMessage" = "App Store desea actualizar WireGuard";
+"macAppStoreUpdatingAlertMessage" = "App Store desea actualizar WGnext";
 
 // Donation
 
 "donateLink" = "♥ Donar al Proyecto WireGuard";
 "macAlertNoInterface" = "Configuration must have an ‘Interface’ section.";
-"macConfirmAndQuitAlertInfo" = "If you close the tunnels manager, WireGuard will continue to be available from the menu bar icon.";
+"macConfirmAndQuitAlertInfo" = "If you close the tunnels manager, WGnext will continue to be available from the menu bar icon.";
 "macUnusableTunnelInfo" = "In case this tunnel was created by another user, only that user can view, edit, or activate this tunnel.";
 "alertTunnelActivationErrorTunnelIsNotInactiveMessage" = "The tunnel is already active or in the process of being activated";
 "alertTunnelActivationSetNetworkSettingsMessage" = "Unable to apply network settings to tunnel object.";
 "macMenuExportTunnels" = "Export Tunnels to Zip…";
 "alertCantOpenInputConfFileTitle" = "Unable to import from file";
-"macConfirmAndQuitAlertMessage" = "Do you want to close the tunnels manager or quit WireGuard entirely?";
+"macConfirmAndQuitAlertMessage" = "Do you want to close the tunnels manager or quit WGnext entirely?";
 "macAlertInfoUnrecognizedInterfaceKey" = "Valid keys are: ‘PrivateKey’, ‘ListenPort’, ‘Address’, ‘DNS’ and ‘MTU’.";
 "alertTunnelNameEmptyMessage" = "Cannot create tunnel with an empty name";
 "alertTunnelNameEmptyTitle" = "No name provided";
@@ -375,7 +375,7 @@
 "macAlertPrivateKeyInvalid" = "Private key is invalid.";
 "macMenuNetworksNone" = "Networks: None";
 "alertSystemErrorMessageTunnelConfigurationReadWriteFailed" = "Reading or writing the configuration failed.";
-"macAppExitingWithActiveTunnelMessage" = "WireGuard is exiting with an active tunnel";
+"macAppExitingWithActiveTunnelMessage" = "WGnext is exiting with an active tunnel";
 "alertSystemErrorMessageTunnelConfigurationStale" = "The configuration is stale.";
 "alertTunnelDNSFailureMessage" = "One or more endpoint domains could not be resolved.";
 "alertSystemErrorOnListingTunnelsTitle" = "Unable to list tunnels";
