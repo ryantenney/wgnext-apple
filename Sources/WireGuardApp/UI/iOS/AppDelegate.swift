@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
+// Copyright © 2026 Ryan Tenney.
 
 import UIKit
 import os.log
@@ -39,6 +40,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         mainVC?.refreshTunnelConnectionStatuses()
+        mainVC?.tunnelsManager?.updateWidgetStatus()
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

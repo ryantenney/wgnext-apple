@@ -4,6 +4,7 @@
 
 import Foundation
 import NetworkExtension
+import UserNotifications
 import os
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
@@ -101,6 +102,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
         wg_log(.info, staticMessage: "Stopping tunnel")
+
+        // Determine a display name for disconnect notifications
+        let displayName: String
+        if let configNames = (self.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverConfigNames"] as? [String], let firstName = configNames.first {
+            displayName = firstName
+        } else if let config = (self.protocolConfiguration as? NETunnelProviderProtocol)?.asTunnelConfiguration() {
+            displayName = config.name ?? "WireGuard"
+        } else {
+            displayName = "WireGuard"
+        }
+
+        // Post a disconnect notification if the user enabled it and the stop was
+        // not triggered by the user themselves (e.g. network lost, server closed).
+        #if os(iOS)
+        if reason != .none && reason != .userInitiated {
+            postDisconnectNotificationIfEnabled(tunnelName: displayName, reason: reason)
+        }
+        #endif
 
         adapter.healthMonitor?.stop()
         adapter.healthMonitor = nil
@@ -253,13 +272,71 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 }
 
+// MARK: - Local Notifications
+
+#if os(iOS)
+extension PacketTunnelProvider {
+    private func postDisconnectNotificationIfEnabled(tunnelName: String, reason: NEProviderStopReason) {
+        guard NotificationSettings.isDisconnectNotificationEnabled else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "VPN Disconnected"
+        content.body = "'\(tunnelName)' has been disconnected."
+        content.sound = .default
+
+        let request = UNNotificationRequest(identifier: "vpn-disconnect-\(UUID().uuidString)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                wg_log(.error, message: "Failed to post disconnect notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func postFailoverNotificationIfEnabled(from fromName: String, to toName: String) {
+        guard NotificationSettings.isFailoverNotificationEnabled else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "VPN Failover"
+        content.body = "Switched from '\(fromName)' to '\(toName)'."
+        content.sound = .default
+
+        let request = UNNotificationRequest(identifier: "vpn-failover-\(UUID().uuidString)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                wg_log(.error, message: "Failed to post failover notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func postFailbackNotificationIfEnabled(to name: String) {
+        guard NotificationSettings.isFailoverNotificationEnabled else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "VPN Failback"
+        content.body = "Returned to primary connection '\(name)'."
+        content.sound = .default
+
+        let request = UNNotificationRequest(identifier: "vpn-failback-\(UUID().uuidString)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                wg_log(.error, message: "Failed to post failback notification: \(error.localizedDescription)")
+            }
+        }
+    }
+}
+#endif
+
 // MARK: - ConnectionHealthMonitorDelegate
 
 extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didSwitchToConfigAt index: Int) {
+        let previousName = failoverConfigNames.indices.contains(activeConfigIndex) ? failoverConfigNames[activeConfigIndex] : "config #\(activeConfigIndex)"
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: now active on '\(name)'")
+        #if os(iOS)
+        postFailoverNotificationIfEnabled(from: previousName, to: name)
+        #endif
     }
 
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectUnhealthyConnectionAt index: Int, txWithoutRxDuration: TimeInterval) {
@@ -271,6 +348,9 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: successfully failed back to '\(name)'")
+        #if os(iOS)
+        postFailbackNotificationIfEnabled(to: name)
+        #endif
     }
 }
 

@@ -4,6 +4,7 @@
 
 import Foundation
 import NetworkExtension
+import WidgetKit
 import os.log
 
 protocol TunnelsManagerListDelegate: AnyObject {
@@ -624,8 +625,33 @@ class TunnelsManager {
             }
 
             tunnel.refreshStatus()
+
+            #if os(iOS)
+            self.updateWidgetStatus()
+            #endif
         }
     }
+
+    #if os(iOS)
+    func updateWidgetStatus() {
+        if let activeTunnel = allTunnels.first(where: { $0.status == .active }) {
+            let status = VPNStatusData(state: .connected, tunnelName: activeTunnel.name, connectedAt: Date())
+            VPNStatusData.save(status)
+        } else if let activatingTunnel = allTunnels.first(where: { $0.status == .activating || $0.status == .waiting || $0.status == .reasserting || $0.status == .restarting }) {
+            let status = VPNStatusData(state: .connecting, tunnelName: activatingTunnel.name, connectedAt: nil)
+            VPNStatusData.save(status)
+        } else if let deactivatingTunnel = allTunnels.first(where: { $0.status == .deactivating }) {
+            let status = VPNStatusData(state: .disconnecting, tunnelName: deactivatingTunnel.name, connectedAt: nil)
+            VPNStatusData.save(status)
+        } else {
+            let status = VPNStatusData(state: .disconnected, tunnelName: "", connectedAt: nil)
+            VPNStatusData.save(status)
+        }
+        if #available(iOS 14.0, *) {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+    #endif
 
     func startObservingTunnelConfigurations() {
         configurationsObservationToken = NotificationCenter.default.observe(name: .NEVPNConfigurationChange, object: nil, queue: OperationQueue.main) { [weak self] _ in

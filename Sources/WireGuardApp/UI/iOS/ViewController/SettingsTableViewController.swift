@@ -4,6 +4,7 @@
 
 import UIKit
 import NetworkExtension
+import UserNotifications
 import os.log
 
 class SettingsTableViewController: UITableViewController {
@@ -13,6 +14,8 @@ class SettingsTableViewController: UITableViewController {
         case goBackendVersion
         case exportZipArchive
         case viewLog
+        case notifyOnDisconnect
+        case notifyOnFailover
 
         var localizedUIString: String {
             switch self {
@@ -20,12 +23,15 @@ class SettingsTableViewController: UITableViewController {
             case .goBackendVersion: return tr("settingsVersionKeyWireGuardGoBackend")
             case .exportZipArchive: return tr("settingsExportZipButtonTitle")
             case .viewLog: return tr("settingsViewLogButtonTitle")
+            case .notifyOnDisconnect: return tr("settingsNotifyOnDisconnect")
+            case .notifyOnFailover: return tr("settingsNotifyOnFailover")
             }
         }
     }
 
     let settingsFieldsBySection: [[SettingsFields]] = [
         [.iosAppVersion, .goBackendVersion],
+        [.notifyOnDisconnect, .notifyOnFailover],
         [.exportZipArchive],
         [.viewLog]
     ]
@@ -53,6 +59,7 @@ class SettingsTableViewController: UITableViewController {
 
         tableView.register(KeyValueCell.self)
         tableView.register(ButtonCell.self)
+        tableView.register(SwitchCell.self)
 
         tableView.tableFooterView = UIImageView(image: UIImage(named: "wireguard.pdf"))
     }
@@ -127,6 +134,61 @@ class SettingsTableViewController: UITableViewController {
         navigationController?.pushViewController(logVC, animated: true)
 
     }
+
+    // MARK: - Notification Permission
+
+    private func requestNotificationPermissionIfNeeded(completion: @escaping (Bool) -> Void) {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                switch settings.authorizationStatus {
+                case .authorized, .provisional:
+                    completion(true)
+                case .notDetermined:
+                    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                        DispatchQueue.main.async { completion(granted) }
+                    }
+                default:
+                    completion(false)
+                }
+            }
+        }
+    }
+
+    private func handleNotificationToggle(field: SettingsFields, isOn: Bool, switchCell: SwitchCell) {
+        if isOn {
+            requestNotificationPermissionIfNeeded { [weak self] granted in
+                if granted {
+                    switch field {
+                    case .notifyOnDisconnect:
+                        NotificationSettings.isDisconnectNotificationEnabled = true
+                    case .notifyOnFailover:
+                        NotificationSettings.isFailoverNotificationEnabled = true
+                    default:
+                        break
+                    }
+                } else {
+                    switchCell.isOn = false
+                    let alert = UIAlertController(
+                        title: tr("settingsNotificationPermissionDeniedTitle"),
+                        message: tr("settingsNotificationPermissionDeniedMessage"),
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: tr("actionOK"), style: .default))
+                    self?.present(alert, animated: true)
+                }
+            }
+        } else {
+            switch field {
+            case .notifyOnDisconnect:
+                NotificationSettings.isDisconnectNotificationEnabled = false
+            case .notifyOnFailover:
+                NotificationSettings.isFailoverNotificationEnabled = false
+            default:
+                break
+            }
+        }
+    }
 }
 
 extension SettingsTableViewController {
@@ -143,8 +205,10 @@ extension SettingsTableViewController {
         case 0:
             return tr("settingsSectionTitleAbout")
         case 1:
-            return tr("settingsSectionTitleExportConfigurations")
+            return tr("settingsSectionTitleNotifications")
         case 2:
+            return tr("settingsSectionTitleExportConfigurations")
+        case 3:
             return tr("settingsSectionTitleTunnelLog")
         default:
             return nil
@@ -165,6 +229,17 @@ extension SettingsTableViewController {
                 cell.value = appVersion
             } else if field == .goBackendVersion {
                 cell.value = WIREGUARD_GO_VERSION
+            }
+            return cell
+        } else if field == .notifyOnDisconnect || field == .notifyOnFailover {
+            let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.message = field.localizedUIString
+            cell.isOn = (field == .notifyOnDisconnect)
+                ? NotificationSettings.isDisconnectNotificationEnabled
+                : NotificationSettings.isFailoverNotificationEnabled
+            cell.onSwitchToggled = { [weak self, weak cell] isOn in
+                guard let cell = cell else { return }
+                self?.handleNotificationToggle(field: field, isOn: isOn, switchCell: cell)
             }
             return cell
         } else if field == .exportZipArchive {
