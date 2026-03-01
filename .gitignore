@@ -37,6 +37,8 @@ xcuserdata
 # Fastlane
 *.app.dSYM.zip
 *.mobileprovision
+fastlane/api_key.json
+fastlane/AuthKey_*.p8
 fastlane/report.xml
 fastlane/screenshots
 fastlane/test_output
