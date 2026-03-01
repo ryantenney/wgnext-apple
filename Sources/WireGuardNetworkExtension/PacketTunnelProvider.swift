@@ -24,6 +24,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// Index of the currently active configuration within failoverConfigs.
     private var activeConfigIndex: Int = 0
 
+    // MARK: - Widget Stats Writer
+
+    /// Timer that periodically writes traffic stats to shared UserDefaults for the widget.
+    private var statsTimer: DispatchSourceTimer?
+
+    /// tx_bytes from the previous stats poll (for rate computation).
+    private var previousStatsTxBytes: UInt64 = 0
+
+    /// rx_bytes from the previous stats poll (for rate computation).
+    private var previousStatsRxBytes: UInt64 = 0
+
+    /// Timestamp of the previous stats poll.
+    private var previousStatsTime: Date?
+
+    /// Rolling traffic samples for sparkline.
+    private var trafficSamples: [VPNTrafficData.TrafficSample] = []
+
+    /// When this tunnel session connected.
+    private var tunnelConnectedSince: Date?
+
     override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         let activationAttemptId = options?["activationAttemptId"] as? String
         let errorNotifier = ErrorNotifier(activationAttemptId: activationAttemptId)
@@ -65,6 +85,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
                 // Start health monitor if failover is configured
                 self.startHealthMonitorIfNeeded(providerConfig: providerConfig)
+
+                // Start writing traffic stats to shared UserDefaults for the widget
+                self.startStatsWriter()
 
                 completionHandler(nil)
                 return
@@ -123,6 +146,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         adapter.healthMonitor?.stop()
         adapter.healthMonitor = nil
+        stopStatsWriter()
 
         adapter.stop { error in
             ErrorNotifier.removeLastErrorFile()
@@ -227,6 +251,108 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         default:
             completionHandler(nil)
+        }
+    }
+
+    // MARK: - Widget Stats Writer
+
+    private func startStatsWriter() {
+        tunnelConnectedSince = Date()
+        previousStatsTxBytes = 0
+        previousStatsRxBytes = 0
+        previousStatsTime = nil
+        trafficSamples = []
+
+        // Determine initial active config name for failover groups
+        let initialActiveConfig: String?
+        if !failoverConfigNames.isEmpty {
+            initialActiveConfig = failoverConfigNames.indices.contains(activeConfigIndex) ? failoverConfigNames[activeConfigIndex] : nil
+        } else {
+            initialActiveConfig = nil
+        }
+
+        // Write initial traffic data immediately so the widget sees it right away
+        let initial = VPNTrafficData(
+            txBytes: 0,
+            rxBytes: 0,
+            txRate: 0,
+            rxRate: 0,
+            connectedSince: tunnelConnectedSince!,
+            activeConfigName: initialActiveConfig,
+            lastHandshakeTime: nil,
+            trafficSamples: [],
+            updatedAt: Date()
+        )
+        VPNTrafficData.save(initial)
+
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.setEventHandler { [weak self] in
+            self?.pollAndWriteStats()
+        }
+        timer.resume()
+        statsTimer = timer
+    }
+
+    private func stopStatsWriter() {
+        statsTimer?.cancel()
+        statsTimer = nil
+        VPNTrafficData.clear()
+    }
+
+    private func pollAndWriteStats() {
+        adapter.getRuntimeConfiguration { [weak self] configString in
+            guard let self = self, let configString = configString else { return }
+
+            let now = Date()
+            let (currentTx, currentRx) = ConnectionHealthMonitor.parseTxRxBytes(from: configString)
+
+            // Compute rates
+            var txRate: Double = 0
+            var rxRate: Double = 0
+            if let prevTime = self.previousStatsTime {
+                let elapsed = now.timeIntervalSince(prevTime)
+                if elapsed > 0 {
+                    txRate = Double(currentTx - self.previousStatsTxBytes) / elapsed
+                    rxRate = Double(currentRx - self.previousStatsRxBytes) / elapsed
+                }
+            }
+
+            self.previousStatsTxBytes = currentTx
+            self.previousStatsRxBytes = currentRx
+            self.previousStatsTime = now
+
+            // Parse last handshake
+            let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: configString)
+            let lastHandshake: Date? = handshakeAge != .infinity ? now.addingTimeInterval(-handshakeAge) : nil
+
+            // Append to rolling traffic samples
+            let sample = VPNTrafficData.TrafficSample(timestamp: now, rxRate: rxRate, txRate: txRate)
+            self.trafficSamples.append(sample)
+            if self.trafficSamples.count > VPNTrafficData.maxSamples {
+                self.trafficSamples.removeFirst(self.trafficSamples.count - VPNTrafficData.maxSamples)
+            }
+
+            // Determine active config name for failover
+            let activeConfig: String?
+            if !self.failoverConfigNames.isEmpty {
+                activeConfig = self.failoverConfigNames.indices.contains(self.activeConfigIndex) ? self.failoverConfigNames[self.activeConfigIndex] : nil
+            } else {
+                activeConfig = nil
+            }
+
+            let trafficData = VPNTrafficData(
+                txBytes: currentTx,
+                rxBytes: currentRx,
+                txRate: txRate,
+                rxRate: rxRate,
+                connectedSince: self.tunnelConnectedSince ?? now,
+                activeConfigName: activeConfig,
+                lastHandshakeTime: lastHandshake,
+                trafficSamples: self.trafficSamples,
+                updatedAt: now
+            )
+            VPNTrafficData.save(trafficData)
         }
     }
 

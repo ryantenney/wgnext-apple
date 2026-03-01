@@ -37,6 +37,10 @@ class TunnelsManager {
     private var statusObservationToken: NotificationToken?
     private var waiteeObservationToken: NSKeyValueObservation?
     private var configurationsObservationToken: NotificationToken?
+    #if os(iOS)
+    /// Stable connection timestamp set once when a tunnel transitions to active.
+    private var widgetConnectedAt: Date?
+    #endif
 
     init(tunnelProviders: [NETunnelProviderManager]) {
         let allContainers = tunnelProviders.map { TunnelContainer(tunnel: $0) }
@@ -635,16 +639,47 @@ class TunnelsManager {
     #if os(iOS)
     func updateWidgetStatus() {
         if let activeTunnel = allTunnels.first(where: { $0.status == .active }) {
-            let status = VPNStatusData(state: .connected, tunnelName: activeTunnel.name, connectedAt: Date())
+            // Only set connectedAt once when transitioning to active
+            if widgetConnectedAt == nil {
+                widgetConnectedAt = Date()
+            }
+            let status = VPNStatusData(
+                state: .connected,
+                tunnelName: activeTunnel.name,
+                connectedAt: widgetConnectedAt,
+                isOnDemandEnabled: activeTunnel.isActivateOnDemandEnabled,
+                hasOnDemandRules: activeTunnel.hasOnDemandRules
+            )
             VPNStatusData.save(status)
         } else if let activatingTunnel = allTunnels.first(where: { $0.status == .activating || $0.status == .waiting || $0.status == .reasserting || $0.status == .restarting }) {
-            let status = VPNStatusData(state: .connecting, tunnelName: activatingTunnel.name, connectedAt: nil)
+            widgetConnectedAt = nil
+            let status = VPNStatusData(
+                state: .connecting,
+                tunnelName: activatingTunnel.name,
+                connectedAt: nil,
+                isOnDemandEnabled: activatingTunnel.isActivateOnDemandEnabled,
+                hasOnDemandRules: activatingTunnel.hasOnDemandRules
+            )
             VPNStatusData.save(status)
         } else if let deactivatingTunnel = allTunnels.first(where: { $0.status == .deactivating }) {
-            let status = VPNStatusData(state: .disconnecting, tunnelName: deactivatingTunnel.name, connectedAt: nil)
+            widgetConnectedAt = nil
+            let status = VPNStatusData(
+                state: .disconnecting,
+                tunnelName: deactivatingTunnel.name,
+                connectedAt: nil
+            )
             VPNStatusData.save(status)
         } else {
-            let status = VPNStatusData(state: .disconnected, tunnelName: "", connectedAt: nil)
+            widgetConnectedAt = nil
+            // When disconnected, report on-demand status from any configured tunnel
+            let onDemandTunnel = allTunnels.first(where: { $0.hasOnDemandRules })
+            let status = VPNStatusData(
+                state: .disconnected,
+                tunnelName: "",
+                connectedAt: nil,
+                isOnDemandEnabled: onDemandTunnel?.isActivateOnDemandEnabled,
+                hasOnDemandRules: onDemandTunnel != nil
+            )
             VPNStatusData.save(status)
         }
         if #available(iOS 14.0, *) {
