@@ -1,14 +1,33 @@
-# [WireGuard](https://www.wireguard.com/) for iOS and macOS
+# WGnext
 
-This project contains an application for iOS and for macOS, as well as many components shared between the two of them. You may toggle between the two platforms by selecting the target from within Xcode.
+An actively maintained [WireGuard](https://www.wireguard.com/) VPN client for iOS and macOS with automatic tunnel failover.
+
+[Download on the App Store](#) <!-- TODO: App Store link -->
+
+## What is this?
+
+WGnext is a fork of the official [wireguard-apple](https://git.zx2c4.com/wireguard-apple/) client. It does everything the upstream app does — import tunnels from files or QR codes, create configs from scratch, on-demand activation rules — plus one headline feature: **failover groups**.
+
+The official WireGuard iOS app hasn't been updated since early 2023. WGnext is under active development with regular updates, bug fixes, and new features.
+
+## Failover Groups
+
+Assign two or more WireGuard tunnels to a failover group in priority order. WGnext monitors your active tunnel for unanswered traffic and seamlessly switches to the next available tunnel when connectivity drops. When your primary tunnel recovers, it switches back. No manual intervention required.
+
+This is useful if you:
+
+- Run dual internet connections with WireGuard exposed on each
+- Self-host WireGuard endpoints across multiple servers or providers
+- Travel and need your VPN to survive flaky connections without babysitting
+- Want redundancy for an always-on VPN configuration
 
 ## Building
 
 - Clone this repo:
 
 ```
-$ git clone https://git.zx2c4.com/wireguard-apple
-$ cd wireguard-apple
+$ git clone https://github.com/rtenney/wgnext
+$ cd wgnext
 ```
 
 - Rename and populate developer team ID file:
@@ -32,57 +51,14 @@ $ open WireGuard.xcodeproj
 
 - Flip switches, press buttons, and make whirling noises until Xcode builds it.
 
-## WireGuardKit integration
+## Contributing
 
-1. Open your Xcode project and add the Swift package with the following URL:
-   
-   ```
-   https://git.zx2c4.com/wireguard-apple
-   ```
-   
-2. `WireGuardKit` links against `wireguard-go-bridge` library, but it cannot build it automatically
-   due to Swift package manager limitations. So it needs a little help from a developer. 
-   Please follow the instructions below to create a build target(s) for `wireguard-go-bridge`.
-   
-   - In Xcode, click File -> New -> Target. Switch to "Other" tab and choose "External Build 
-     System".
-   - Type in `WireGuardGoBridge<PLATFORM>` under the "Product name", replacing the `<PLATFORM>` 
-     placeholder with the name of the platform. For example, when targeting macOS use `macOS`, or 
-     when targeting iOS use `iOS`.
-     Make sure the build tool is set to: `/usr/bin/make` (default).
-   - In the appeared "Info" tab of a newly created target, type in the "Directory" path under 
-     the "External Build Tool Configuration":
-     
-     ```
-     ${BUILD_DIR%Build/*}SourcePackages/checkouts/wireguard-apple/Sources/WireGuardKitGo
-     ```
-     
-   - Switch to "Build Settings" and find `SDKROOT`.
-     Type in `macosx` if you target macOS, or type in `iphoneos` if you target iOS.
-   
-3. Go to Xcode project settings and locate your network extension target and switch to 
-   "Build Phases" tab.
-   
-   - Locate "Dependencies" section and hit "+" to add `WireGuardGoBridge<PLATFORM>` replacing 
-     the `<PLATFORM>` placeholder with the name of platform matching the network extension 
-     deployment target (i.e macOS or iOS).
-     
-   - Locate the "Link with binary libraries" section and hit "+" to add `WireGuardKit`.
-   
-4. In Xcode project settings, locate your main bundle app and switch to "Build Phases" tab. 
-   Locate the "Link with binary libraries" section and hit "+" to add `WireGuardKit`.
-   
-5. iOS only: Locate Bitcode settings under your application target, Build settings -> Enable Bitcode, 
-   change the corresponding value to "No".
-   
-Note that if you ship your app for both iOS and macOS, make sure to repeat the steps 2-4 twice, 
-once per platform.
+Contributors who get a substantive PR merged earn a free license in perpetuity. Already paid? We'll issue a refund. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 
-This project is a fork of [wireguard-apple](https://git.zx2c4.com/wireguard-apple/),
-originally developed by Jason A. Donenfeld / WireGuard LLC under the MIT license.
+This project is a fork of [wireguard-apple](https://git.zx2c4.com/wireguard-apple/), originally developed by Jason A. Donenfeld / WireGuard LLC under the MIT license.
 
-This derivative work is licensed under the
-[GNU General Public License v3.0 or later](LICENSE).
-The original MIT license is preserved in [LICENSE.MIT](LICENSE.MIT).
+This derivative work is licensed under the [GNU General Public License v3.0 or later](LICENSE). The original MIT license is preserved in [LICENSE.MIT](LICENSE.MIT).
+
+WGnext is not affiliated with or endorsed by the WireGuard project. "WireGuard" is a registered trademark of Jason A. Donenfeld.
