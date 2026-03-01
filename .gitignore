@@ -47,6 +47,9 @@ Preview.html
 output
 Gemfile.lock
 
+# XcodeGen (xcodeproj is now generated)
+*.xcodeproj
+
 # Wireguard specific
 Sources/WireGuardApp/Config/Developer.xcconfig
 

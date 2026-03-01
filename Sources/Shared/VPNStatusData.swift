@@ -16,11 +16,20 @@ struct VPNStatusData: Codable {
     var state: ConnectionState
     var tunnelName: String
     var connectedAt: Date?
+    var isOnDemandEnabled: Bool?
+    var hasOnDemandRules: Bool?
 
     static let userDefaultsKey = "vpnStatusData"
 
     private static var userDefaults: UserDefaults? {
-        guard let appGroupId = FileManager.appGroupId else { return nil }
+        #if os(iOS)
+        let key = "com.wireguard.ios.app_group_id"
+        #elseif os(macOS)
+        let key = "com.wireguard.macos.app_group_id"
+        #else
+        #error("Unimplemented")
+        #endif
+        guard let appGroupId = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }
         return UserDefaults(suiteName: appGroupId)
     }
 

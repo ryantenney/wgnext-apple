@@ -1,7 +1,7 @@
 # WireGuard for iOS & macOS - Fastlane Configuration
 #
 # Prerequisites:
-#   brew install fastlane go swiftlint
+#   brew install fastlane go swiftlint xcodegen
 #
 # Quick start:
 #   cp Sources/WireGuardApp/Config/Developer.xcconfig.template \
@@ -34,6 +34,21 @@ def auth_xcargs
     " -authenticationKeyIssuerID '#{key['issuer_id']}'"
 end
 
+# Parse Developer.xcconfig into a Hash (keys like APP_ID_IOS, APP_ID_MACOS, etc.)
+def read_developer_xcconfig
+  path = File.join(__dir__, "..", "Sources", "WireGuardApp", "Config", "Developer.xcconfig")
+  values = {}
+  return values unless File.exist?(path)
+  File.readlines(path).each do |line|
+    line = line.strip
+    next if line.empty? || line.start_with?("#") || line.start_with?("//")
+    if line =~ /^(\w+)\s*=\s*(.+)$/
+      values[$1] = $2.strip
+    end
+  end
+  values
+end
+
 before_all do
   xcconfig = File.join(__dir__, "..", "Sources", "WireGuardApp", "Config", "Developer.xcconfig")
   unless File.exist?(xcconfig)
@@ -43,6 +58,15 @@ before_all do
       "Sources/WireGuardApp/Config/Developer.xcconfig\n" \
       "Then fill in DEVELOPMENT_TEAM, APP_ID_IOS, and APP_ID_MACOS."
     )
+  end
+
+  # Regenerate Xcode project from project.yml (source of truth)
+  project_yml = File.join(__dir__, "..", "project.yml")
+  if File.exist?(project_yml)
+    unless system("which xcodegen > /dev/null 2>&1")
+      UI.user_error!("xcodegen is required but not installed. Install with: brew install xcodegen")
+    end
+    sh("cd .. && xcodegen generate")
   end
 end
 
@@ -73,7 +97,7 @@ platform :ios do
       export_method: "development",
       skip_profile_detection: true,
       skip_package_dependencies_resolution: true,
-      xcargs: auth_xcargs
+      xcargs: "-allowProvisioningUpdates"
     )
     install_on_device
   end
@@ -87,7 +111,7 @@ platform :ios do
       export_method: "development",
       skip_profile_detection: true,
       skip_package_dependencies_resolution: true,
-      xcargs: "#{auth_xcargs} SWIFT_ACTIVE_COMPILATION_CONDITIONS=\"DEBUG FAILOVER_TESTING\""
+      xcargs: "-allowProvisioningUpdates SWIFT_ACTIVE_COMPILATION_CONDITIONS=\"DEBUG FAILOVER_TESTING\""
     )
     install_on_device
   end
@@ -121,8 +145,59 @@ platform :ios do
     )
   end
 
+  desc "Register all App IDs and capabilities on the Apple Developer Portal"
+  lane :register do
+    config = read_developer_xcconfig
+    app_id_ios = config["APP_ID_IOS"]
+    app_id_macos = config["APP_ID_MACOS"]
+    UI.user_error!("APP_ID_IOS not set in Developer.xcconfig") unless app_id_ios && !app_id_ios.empty?
+    UI.user_error!("APP_ID_MACOS not set in Developer.xcconfig") unless app_id_macos && !app_id_macos.empty?
+
+    key_json = JSON.parse(File.read(API_KEY_JSON))
+    token = Spaceship::ConnectAPI::Token.create(
+      key_id: key_json["key_id"],
+      issuer_id: key_json["issuer_id"],
+      filepath: File.expand_path("../fastlane/AuthKey_#{key_json['key_id']}.p8")
+    )
+    Spaceship::ConnectAPI.token = token
+
+    bundles = [
+      { identifier: app_id_ios,                          name: "WGnext",                    platform: "IOS",    capabilities: %w[APP_GROUPS NETWORK_EXTENSIONS] },
+      { identifier: "#{app_id_ios}.network-extension",   name: "WGnext Network Extension",  platform: "IOS",    capabilities: %w[APP_GROUPS NETWORK_EXTENSIONS] },
+      { identifier: "#{app_id_ios}.widget",              name: "WGnext Widget",             platform: "IOS",    capabilities: %w[APP_GROUPS] },
+      { identifier: app_id_macos,                        name: "WGnext macOS",              platform: "MAC_OS", capabilities: %w[APP_GROUPS NETWORK_EXTENSIONS] },
+      { identifier: "#{app_id_macos}.network-extension", name: "WGnext NE macOS",           platform: "MAC_OS", capabilities: %w[APP_GROUPS NETWORK_EXTENSIONS] },
+      { identifier: "#{app_id_macos}.login-item-helper", name: "WGnext Login Helper macOS", platform: "MAC_OS", capabilities: %w[APP_GROUPS] },
+    ]
+
+    bundles.each do |info|
+      bundle_id = Spaceship::ConnectAPI::BundleId.find(info[:identifier])
+      if bundle_id
+        UI.important("#{info[:identifier]} already registered")
+      else
+        bundle_id = Spaceship::ConnectAPI::BundleId.create(
+          name: info[:name],
+          identifier: info[:identifier],
+          platform: info[:platform]
+        )
+        UI.success("Registered #{info[:identifier]}")
+      end
+
+      existing = Spaceship::ConnectAPI::BundleIdCapability.all(bundle_id_id: bundle_id.id)
+      info[:capabilities].each do |cap_type|
+        next if existing.any? { |c| c.capability_type == cap_type }
+        Spaceship::ConnectAPI::BundleIdCapability.create(
+          bundle_id_id: bundle_id.id,
+          capability_type: cap_type,
+          settings: []
+        )
+        UI.success("Enabled #{cap_type} on #{info[:identifier]}")
+      end
+    end
+  end
+
   desc "Register new device by name and UDID"
-  lane :register do |options|
+  lane :add_device do |options|
     device_name = options[:name] || UI.input("Device name: ")
     device_udid = options[:udid] || UI.input("Device UDID: ")
     register_device(
@@ -136,6 +211,7 @@ platform :ios do
   lane :signing do
     match(type: "development")
   end
+
 end
 
 # ---------------------------------------------------------------------------

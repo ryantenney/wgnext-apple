@@ -37,15 +37,16 @@ $ cp Sources/WireGuardApp/Config/Developer.xcconfig.template Sources/WireGuardAp
 $ vim Sources/WireGuardApp/Config/Developer.xcconfig
 ```
 
-- Install swiftlint and go 1.19:
+- Install prerequisites:
 
 ```
-$ brew install swiftlint go
+$ brew install swiftlint go xcodegen
 ```
 
-- Open project in Xcode:
+- Generate the Xcode project and open it:
 
 ```
+$ xcodegen generate
 $ open WireGuard.xcodeproj
 ```
 

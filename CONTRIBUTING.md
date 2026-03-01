@@ -2,14 +2,15 @@
 
 ## Build Setup
 
-1. Install prerequisites: Xcode, Go 1.19+ (`brew install go`), SwiftLint (`brew install swiftlint`)
+1. Install prerequisites: Xcode, Go 1.19+ (`brew install go`), SwiftLint (`brew install swiftlint`), XcodeGen (`brew install xcodegen`)
 2. Copy the developer config template:
    ```
    cp Sources/WireGuardApp/Config/Developer.xcconfig.template \
       Sources/WireGuardApp/Config/Developer.xcconfig
    ```
 3. Edit `Developer.xcconfig` and set `DEVELOPMENT_TEAM`, `APP_ID_IOS`, `APP_ID_MACOS`
-4. Build via Xcode or fastlane:
+4. Generate the Xcode project: `xcodegen generate`
+5. Build via Xcode or fastlane:
    ```
    fastlane ios build    # iOS
    fastlane mac build    # macOS
