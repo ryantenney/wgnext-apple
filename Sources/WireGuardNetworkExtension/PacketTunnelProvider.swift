@@ -44,12 +44,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// When this tunnel session connected.
     private var tunnelConnectedSince: Date?
 
-    /// Most recently discovered public IP via icanhazip.com.
-    private var discoveredIP: String?
-
-    /// Timer for periodic IP discovery.
-    private var ipDiscoveryTimer: DispatchSourceTimer?
-
     override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         let activationAttemptId = options?["activationAttemptId"] as? String
         let errorNotifier = ErrorNotifier(activationAttemptId: activationAttemptId)
@@ -94,9 +88,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
                 // Start writing traffic stats to shared UserDefaults for the widget
                 self.startStatsWriter()
-
-                // Start IP discovery if enabled
-                self.startIPDiscoveryIfEnabled()
 
                 completionHandler(nil)
                 return
@@ -155,7 +146,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         adapter.healthMonitor?.stop()
         adapter.healthMonitor = nil
-        stopIPDiscovery()
         stopStatsWriter()
 
         adapter.stop { error in
@@ -291,7 +281,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             activeConfigName: initialActiveConfig,
             lastHandshakeTime: nil,
             trafficSamples: [],
-            discoveredIP: nil,
             updatedAt: Date()
         )
         VPNTrafficData.save(initial)
@@ -361,62 +350,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 activeConfigName: activeConfig,
                 lastHandshakeTime: lastHandshake,
                 trafficSamples: self.trafficSamples,
-                discoveredIP: self.discoveredIP,
                 updatedAt: now
             )
             VPNTrafficData.save(trafficData)
         }
-    }
-
-    // MARK: - IP Discovery
-
-    private func startIPDiscoveryIfEnabled() {
-        guard IPDiscoverySettings.isEnabled else { return }
-
-        // Fetch immediately on connect (with a short delay for the tunnel to settle)
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) { [weak self] in
-            self?.fetchPublicIP()
-        }
-
-        // Re-fetch every 5 minutes
-        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        timer.schedule(deadline: .now() + 300, repeating: 300)
-        timer.setEventHandler { [weak self] in
-            guard IPDiscoverySettings.isEnabled else {
-                self?.discoveredIP = nil
-                return
-            }
-            self?.fetchPublicIP()
-        }
-        timer.resume()
-        ipDiscoveryTimer = timer
-    }
-
-    private func stopIPDiscovery() {
-        ipDiscoveryTimer?.cancel()
-        ipDiscoveryTimer = nil
-        discoveredIP = nil
-    }
-
-    private func fetchPublicIP() {
-        guard let url = URL(string: "https://icanhazip.com") else { return }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
-            if let error = error {
-                wg_log(.error, message: "IP discovery failed: \(error.localizedDescription)")
-                return
-            }
-            guard let data = data, let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !ip.isEmpty else {
-                return
-            }
-            self?.discoveredIP = ip
-            wg_log(.info, message: "IP discovery: \(ip)")
-        }
-        task.resume()
     }
 
     // MARK: - Failover Setup

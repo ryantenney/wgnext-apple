@@ -297,6 +297,7 @@ targets:
       - path: Sources/WireGuardWidget/WireGuardWidget.swift
       - path: Sources/Shared/VPNStatusData.swift
       - path: Sources/Shared/VPNTrafficData.swift
+      - path: Sources/Shared/IPDiscoverySettings.swift
     dependencies:
       - sdk: SwiftUI.framework
       - sdk: WidgetKit.framework

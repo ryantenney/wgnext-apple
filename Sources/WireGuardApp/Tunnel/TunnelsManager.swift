@@ -630,10 +630,49 @@ class TunnelsManager {
 
             tunnel.refreshStatus()
 
+            // IP discovery: fetch when connected, clear when disconnected
+            if session.status == .connected {
+                self.fetchPublicIPIfEnabled()
+            } else if session.status == .disconnected {
+                self.clearDiscoveredIP()
+            }
+
             #if os(iOS)
             self.updateWidgetStatus()
             #endif
         }
+    }
+
+    // MARK: - IP Discovery
+
+    private func fetchPublicIPIfEnabled() {
+        guard IPDiscoverySettings.isEnabled else { return }
+
+        // Delay slightly to let the tunnel settle before fetching
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+            guard let url = URL(string: "https://ipv4.icanhazip.com") else { return }
+
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 10
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+
+            let task = URLSession.shared.dataTask(with: request) { data, _, error in
+                if let error = error {
+                    wg_log(.error, message: "IP discovery failed: \(error.localizedDescription)")
+                    return
+                }
+                guard let data = data,
+                      let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !ip.isEmpty else { return }
+                IPDiscoverySettings.discoveredIP = ip
+                wg_log(.info, message: "IP discovery: \(ip)")
+            }
+            task.resume()
+        }
+    }
+
+    private func clearDiscoveredIP() {
+        IPDiscoverySettings.discoveredIP = nil
     }
 
     #if os(iOS)

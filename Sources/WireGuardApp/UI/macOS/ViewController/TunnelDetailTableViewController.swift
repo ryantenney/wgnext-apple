@@ -362,7 +362,7 @@ class TunnelDetailTableViewController: NSViewController {
     }
 
     private func reloadDiscoveredIP() {
-        let newIP = VPNTrafficData.load()?.discoveredIP
+        let newIP = IPDiscoverySettings.discoveredIP
         guard newIP != discoveredIP else { return }
         discoveredIP = newIP
         updateTableViewModelRowsBySection()

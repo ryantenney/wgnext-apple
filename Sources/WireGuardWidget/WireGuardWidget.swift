@@ -101,7 +101,7 @@ struct VPNStatusProvider: TimelineProvider {
             activeConfigName: traffic?.activeConfigName,
             lastHandshakeTime: traffic?.lastHandshakeTime,
             trafficSamples: traffic?.trafficSamples ?? [],
-            discoveredIP: traffic?.discoveredIP
+            discoveredIP: IPDiscoverySettings.discoveredIP
         )
     }
 }
