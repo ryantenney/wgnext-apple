@@ -29,6 +29,14 @@ class TunnelEditTableViewController: UITableViewController {
         }
     }
 
+    private enum PeerEditRow {
+        case field(TunnelViewModel.PeerField)
+        case allowedIPsRadio(AllowedIPsPreset)
+        case excludePrivateIPs
+        case allowedIPsChip(index: Int)
+        case allowedIPsAddRange
+    }
+
     weak var delegate: TunnelEditTableViewControllerDelegate?
 
     let interfaceFieldsBySection: [[TunnelViewModel.InterfaceField]] = [
@@ -55,6 +63,12 @@ class TunnelEditTableViewController: UITableViewController {
     var onDemandViewModel: ActivateOnDemandViewModel
     private var sections = [Section]()
 
+    private var allowedIPsEditorState: AllowedIPsEditorState?
+
+    private var isSinglePeer: Bool {
+        return tunnelViewModel.peersData.count == 1
+    }
+
     // Use this initializer to edit an existing tunnel.
     init(tunnelsManager: TunnelsManager, tunnel: TunnelContainer) {
         self.tunnelsManager = tunnelsManager
@@ -63,6 +77,7 @@ class TunnelEditTableViewController: UITableViewController {
         onDemandViewModel = ActivateOnDemandViewModel(tunnel: tunnel)
         super.init(style: .grouped)
         loadSections()
+        updateAllowedIPsEditorState()
     }
 
     // Use this initializer to create a new tunnel.
@@ -73,6 +88,7 @@ class TunnelEditTableViewController: UITableViewController {
         onDemandViewModel = ActivateOnDemandViewModel()
         super.init(style: .grouped)
         loadSections()
+        updateAllowedIPsEditorState()
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -92,6 +108,7 @@ class TunnelEditTableViewController: UITableViewController {
         tableView.register(TunnelEditEditableKeyValueCell.self)
         tableView.register(ButtonCell.self)
         tableView.register(SwitchCell.self)
+        tableView.register(CheckmarkCell.self)
         tableView.register(ChevronCell.self)
     }
 
@@ -101,6 +118,53 @@ class TunnelEditTableViewController: UITableViewController {
         tunnelViewModel.peersData.forEach { sections.append(.peer($0)) }
         sections.append(.addPeer)
         sections.append(.onDemand)
+    }
+
+    private func updateAllowedIPsEditorState() {
+        if isSinglePeer, let peerData = tunnelViewModel.peersData.first {
+            allowedIPsEditorState = AllowedIPsEditorState(peerData: peerData, tunnelViewModel: tunnelViewModel)
+        } else {
+            allowedIPsEditorState = nil
+        }
+    }
+
+    private func peerEditRows(for peerData: TunnelViewModel.PeerData) -> [PeerEditRow] {
+        guard isSinglePeer, let editorState = allowedIPsEditorState else {
+            // Multi-peer: use flat field list
+            let peerFieldsToShow = peerData.shouldAllowExcludePrivateIPsControl ? peerFields : peerFields.filter { $0 != .excludePrivateIPs }
+            return peerFieldsToShow.map { .field($0) }
+        }
+
+        var rows: [PeerEditRow] = [
+            .field(.publicKey),
+            .field(.preSharedKey),
+            .field(.endpoint)
+        ]
+
+        // Radio buttons
+        for preset in AllowedIPsPreset.allCases {
+            rows.append(.allowedIPsRadio(preset))
+        }
+
+        // Exclude Private IPs toggle (only for non-custom presets)
+        if !editorState.isCustom {
+            rows.append(.excludePrivateIPs)
+        }
+
+        // Chip rows for each range
+        for i in 0..<editorState.ranges.count {
+            rows.append(.allowedIPsChip(index: i))
+        }
+
+        // Add range button (only in custom mode)
+        if editorState.isCustom {
+            rows.append(.allowedIPsAddRange)
+        }
+
+        rows.append(.field(.persistentKeepAlive))
+        rows.append(.field(.deletePeer))
+
+        return rows
     }
 
     @objc func saveTapped() {
@@ -157,8 +221,7 @@ extension TunnelEditTableViewController {
         case .interface:
             return interfaceFieldsBySection[section].count
         case .peer(let peerData):
-            let peerFieldsToShow = peerData.shouldAllowExcludePrivateIPsControl ? peerFields : peerFields.filter { $0 != .excludePrivateIPs }
-            return peerFieldsToShow.count
+            return peerEditRows(for: peerData).count
         case .addPeer:
             return 1
         case .onDemand:
@@ -266,9 +329,15 @@ extension TunnelEditTableViewController {
                 guard let self = self else { return }
                 let isAllowedIPsChanged = self.tunnelViewModel.updateDNSServersInAllowedIPsIfRequired(oldDNSServers: oldValue, newDNSServers: newValue)
                 if isAllowedIPsChanged {
-                    let section = self.sections.firstIndex { if case .peer = $0 { return true } else { return false } }
-                    if let section = section, let row = self.peerFields.firstIndex(of: .allowedIPs) {
-                        self.tableView.reloadRows(at: [IndexPath(row: row, section: section)], with: .none)
+                    let peerSection = self.sections.firstIndex { if case .peer = $0 { return true } else { return false } }
+                    if let section = peerSection {
+                        if self.isSinglePeer, let peerData = self.tunnelViewModel.peersData.first {
+                            // Refresh editor state and reload chip rows
+                            self.allowedIPsEditorState = AllowedIPsEditorState(peerData: peerData, tunnelViewModel: self.tunnelViewModel)
+                            self.tableView.reloadSections(IndexSet(integer: section), with: .none)
+                        } else if let row = self.peerFields.firstIndex(of: .allowedIPs) {
+                            self.tableView.reloadRows(at: [IndexPath(row: row, section: section)], with: .none)
+                        }
                     }
                 }
             }
@@ -292,16 +361,27 @@ extension TunnelEditTableViewController {
     }
 
     private func peerCell(for tableView: UITableView, at indexPath: IndexPath, with peerData: TunnelViewModel.PeerData) -> UITableViewCell {
-        let peerFieldsToShow = peerData.shouldAllowExcludePrivateIPsControl ? peerFields : peerFields.filter { $0 != .excludePrivateIPs }
-        let field = peerFieldsToShow[indexPath.row]
+        let rows = peerEditRows(for: peerData)
+        let row = rows[indexPath.row]
 
-        switch field {
-        case .deletePeer:
-            return deletePeerCell(for: tableView, at: indexPath, peerData: peerData, field: field)
+        switch row {
+        case .field(let field):
+            switch field {
+            case .deletePeer:
+                return deletePeerCell(for: tableView, at: indexPath, peerData: peerData, field: field)
+            case .excludePrivateIPs:
+                return excludePrivateIPsCell(for: tableView, at: indexPath, peerData: peerData, field: field)
+            default:
+                return peerFieldKeyValueCell(for: tableView, at: indexPath, peerData: peerData, field: field)
+            }
+        case .allowedIPsRadio(let preset):
+            return allowedIPsRadioCell(for: tableView, at: indexPath, preset: preset)
         case .excludePrivateIPs:
-            return excludePrivateIPsCell(for: tableView, at: indexPath, peerData: peerData, field: field)
-        default:
-            return peerFieldKeyValueCell(for: tableView, at: indexPath, peerData: peerData, field: field)
+            return allowedIPsExcludePrivateIPsCell(for: tableView, at: indexPath, peerData: peerData)
+        case .allowedIPsChip(let index):
+            return allowedIPsChipCell(for: tableView, at: indexPath, rangeIndex: index)
+        case .allowedIPsAddRange:
+            return allowedIPsAddRangeCell(for: tableView, at: indexPath)
         }
     }
 
@@ -315,17 +395,17 @@ extension TunnelEditTableViewController {
                                                              buttonTitle: tr("deletePeerConfirmationAlertButtonTitle"),
                                                              from: cell, presentingVC: self) { [weak self] in
                 guard let self = self else { return }
+                let wasMultiPeer = !self.isSinglePeer
                 let removedSectionIndices = self.deletePeer(peer: peerData)
-                let shouldShowExcludePrivateIPs = (self.tunnelViewModel.peersData.count == 1 && self.tunnelViewModel.peersData[0].shouldAllowExcludePrivateIPsControl)
+                self.updateAllowedIPsEditorState()
 
                 // swiftlint:disable:next trailing_closure
                 tableView.performBatchUpdates({
                     self.tableView.deleteSections(removedSectionIndices, with: .fade)
-                    if shouldShowExcludePrivateIPs {
-                        if let row = self.peerFields.firstIndex(of: .excludePrivateIPs) {
-                            let rowIndexPath = IndexPath(row: row, section: self.interfaceFieldsBySection.count /* First peer section */)
-                            self.tableView.insertRows(at: [rowIndexPath], with: .fade)
-                        }
+                    if wasMultiPeer && self.isSinglePeer {
+                        // Reload remaining peer section — editor expands from raw text field
+                        let firstPeerSection = self.interfaceFieldsBySection.count
+                        self.tableView.reloadSections(IndexSet(integer: firstPeerSection), with: .fade)
                     }
                 })
             }
@@ -346,6 +426,85 @@ extension TunnelEditTableViewController {
             }
         }
         return cell
+    }
+
+    private func allowedIPsRadioCell(for tableView: UITableView, at indexPath: IndexPath, preset: AllowedIPsPreset) -> UITableViewCell {
+        let cell: CheckmarkCell = tableView.dequeueReusableCell(for: indexPath)
+        switch preset {
+        case .routeAll:
+            cell.message = tr("allowedIPsPresetRouteAll")
+        case .routeIPv4Only:
+            cell.message = tr("allowedIPsPresetRouteIPv4Only")
+        case .custom:
+            cell.message = tr("allowedIPsPresetCustom")
+        }
+        cell.isChecked = allowedIPsEditorState?.preset == preset
+        return cell
+    }
+
+    private func allowedIPsExcludePrivateIPsCell(for tableView: UITableView, at indexPath: IndexPath, peerData: TunnelViewModel.PeerData) -> UITableViewCell {
+        let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.message = TunnelViewModel.PeerField.excludePrivateIPs.localizedUIString
+        cell.isEnabled = true
+        cell.isOn = allowedIPsEditorState?.excludePrivateIPs ?? false
+        cell.onSwitchToggled = { [weak self] isOn in
+            guard let self = self, let editorState = self.allowedIPsEditorState else { return }
+            let oldRangeCount = editorState.ranges.count
+            editorState.setExcludePrivateIPs(isOn)
+            let newRangeCount = editorState.ranges.count
+            self.reloadChipRows(in: indexPath.section, oldCount: oldRangeCount, newCount: newRangeCount)
+        }
+        return cell
+    }
+
+    private func allowedIPsChipCell(for tableView: UITableView, at indexPath: IndexPath, rangeIndex: Int) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        if let editorState = allowedIPsEditorState, rangeIndex < editorState.ranges.count {
+            cell.textLabel?.text = editorState.ranges[rangeIndex]
+        }
+        cell.textLabel?.font = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
+        cell.textLabel?.textColor = .secondaryLabel
+        cell.selectionStyle = .none
+        return cell
+    }
+
+    private func allowedIPsAddRangeCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.buttonText = tr("allowedIPsAddRange")
+        cell.onTapped = { [weak self] in
+            self?.presentAddRangeAlert()
+        }
+        return cell
+    }
+
+    private func presentAddRangeAlert() {
+        let alert = UIAlertController(title: tr("allowedIPsAddRangeTitle"), message: nil, preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.placeholder = tr("allowedIPsAddRangePlaceholder")
+            textField.keyboardType = .numbersAndPunctuation
+        }
+        alert.addAction(UIAlertAction(title: tr("actionCancel"), style: .cancel))
+        alert.addAction(UIAlertAction(title: tr("actionSave"), style: .default) { [weak self] _ in
+            guard let self = self, let editorState = self.allowedIPsEditorState else { return }
+            guard let text = alert.textFields?.first?.text else { return }
+            let peerSection = self.sections.firstIndex { if case .peer = $0 { return true } else { return false } }
+            guard let section = peerSection else { return }
+            if editorState.addRange(text) {
+                let rows = self.peerEditRows(for: self.tunnelViewModel.peersData[0])
+                // The new chip is inserted before the add-range button
+                let newChipRow = rows.count - 3 // before addRange row, persistentKeepAlive, deletePeer
+                self.tableView.insertRows(at: [IndexPath(row: newChipRow, section: section)], with: .automatic)
+            } else {
+                let errorAlert = UIAlertController(title: tr("allowedIPsAddRangeInvalid"), message: nil, preferredStyle: .alert)
+                errorAlert.addAction(UIAlertAction(title: tr("actionOK"), style: .default))
+                self.present(errorAlert, animated: true)
+            }
+        })
+        present(alert, animated: true)
+    }
+
+    private func reloadChipRows(in section: Int, oldCount: Int, newCount: Int) {
+        tableView.reloadSections(IndexSet(integer: section), with: .automatic)
     }
 
     private func peerFieldKeyValueCell(for tableView: UITableView, at indexPath: IndexPath, peerData: TunnelViewModel.PeerData, field: TunnelViewModel.PeerField) -> UITableViewCell {
@@ -408,15 +567,15 @@ extension TunnelEditTableViewController {
         cell.buttonText = tr("addPeerButtonTitle")
         cell.onTapped = { [weak self] in
             guard let self = self else { return }
-            let shouldHideExcludePrivateIPs = (self.tunnelViewModel.peersData.count == 1 && self.tunnelViewModel.peersData[0].shouldAllowExcludePrivateIPsControl)
+            let wasSinglePeer = self.isSinglePeer
             let addedSectionIndices = self.appendEmptyPeer()
+            self.updateAllowedIPsEditorState()
             tableView.performBatchUpdates({
                 tableView.insertSections(addedSectionIndices, with: .fade)
-                if shouldHideExcludePrivateIPs {
-                    if let row = self.peerFields.firstIndex(of: .excludePrivateIPs) {
-                        let rowIndexPath = IndexPath(row: row, section: self.interfaceFieldsBySection.count /* First peer section */)
-                        self.tableView.deleteRows(at: [rowIndexPath], with: .fade)
-                    }
+                if wasSinglePeer {
+                    // Reload first peer section — editor collapses to raw text field
+                    let firstPeerSection = self.interfaceFieldsBySection.count
+                    tableView.reloadSections(IndexSet(integer: firstPeerSection), with: .fade)
                 }
             }, completion: nil)
         }
@@ -467,15 +626,35 @@ extension TunnelEditTableViewController {
 
 extension TunnelEditTableViewController {
     override func tableView(_ tableView: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
-        if case .onDemand = sections[indexPath.section], indexPath.row == 2 {
-            return indexPath
-        } else {
+        switch sections[indexPath.section] {
+        case .peer(let peerData):
+            let rows = peerEditRows(for: peerData)
+            let row = rows[indexPath.row]
+            switch row {
+            case .allowedIPsRadio:
+                return indexPath
+            default:
+                return nil
+            }
+        case .onDemand:
+            if indexPath.row == 2 {
+                return indexPath
+            }
+            return nil
+        default:
             return nil
         }
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         switch sections[indexPath.section] {
+        case .peer(let peerData):
+            let rows = peerEditRows(for: peerData)
+            let row = rows[indexPath.row]
+            if case .allowedIPsRadio(let preset) = row {
+                tableView.deselectRow(at: indexPath, animated: true)
+                handlePresetSelection(preset, in: indexPath.section, peerData: peerData)
+            }
         case .onDemand:
             assert(indexPath.row == 2)
             tableView.deselectRow(at: indexPath, animated: true)
@@ -483,7 +662,75 @@ extension TunnelEditTableViewController {
             ssidOptionVC.delegate = self
             navigationController?.pushViewController(ssidOptionVC, animated: true)
         default:
-            assertionFailure()
+            break
+        }
+    }
+
+    private func handlePresetSelection(_ preset: AllowedIPsPreset, in section: Int, peerData: TunnelViewModel.PeerData) {
+        guard let editorState = allowedIPsEditorState else { return }
+        let oldPreset = editorState.preset
+        guard preset != oldPreset else { return }
+
+        let oldRows = peerEditRows(for: peerData)
+        editorState.selectPreset(preset)
+        let newRows = peerEditRows(for: peerData)
+
+        tableView.beginUpdates()
+
+        // Compute index paths to delete (old rows not in new)
+        var deleteIndexPaths = [IndexPath]()
+        var insertIndexPaths = [IndexPath]()
+
+        // Find ranges of dynamic rows in old and new
+        for (i, row) in oldRows.enumerated() {
+            switch row {
+            case .excludePrivateIPs, .allowedIPsChip, .allowedIPsAddRange:
+                deleteIndexPaths.append(IndexPath(row: i, section: section))
+            default:
+                break
+            }
+        }
+        for (i, row) in newRows.enumerated() {
+            switch row {
+            case .excludePrivateIPs, .allowedIPsChip, .allowedIPsAddRange:
+                insertIndexPaths.append(IndexPath(row: i, section: section))
+            default:
+                break
+            }
+        }
+
+        tableView.deleteRows(at: deleteIndexPaths, with: .fade)
+        tableView.insertRows(at: insertIndexPaths, with: .fade)
+
+        // Reload radio rows to update checkmarks
+        let radioIndexPaths = newRows.enumerated().compactMap { (i, row) -> IndexPath? in
+            if case .allowedIPsRadio = row { return IndexPath(row: i, section: section) }
+            return nil
+        }
+        tableView.reloadRows(at: radioIndexPaths, with: .none)
+
+        tableView.endUpdates()
+    }
+
+    override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+        guard case .peer(let peerData) = sections[indexPath.section] else { return false }
+        guard let editorState = allowedIPsEditorState, editorState.isCustom else { return false }
+        let rows = peerEditRows(for: peerData)
+        if case .allowedIPsChip = rows[indexPath.row] {
+            return true
+        }
+        return false
+    }
+
+    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        guard editingStyle == .delete else { return }
+        guard let editorState = allowedIPsEditorState else { return }
+        guard case .peer(let peerData) = sections[indexPath.section] else { return }
+        let rows = peerEditRows(for: peerData)
+        if case .allowedIPsChip(let rangeIndex) = rows[indexPath.row] {
+            editorState.removeRange(at: rangeIndex)
+            // Reload the entire section since chip indices shift
+            tableView.reloadSections(IndexSet(integer: indexPath.section), with: .automatic)
         }
     }
 }

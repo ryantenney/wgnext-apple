@@ -397,6 +397,7 @@ class TunnelViewModel {
         }
 
         static let ipv4DefaultRouteString = "0.0.0.0/0"
+        static let ipv6DefaultRouteString = "::/0"
         static let ipv4DefaultRouteModRFC1918String = [ // Set of all non-private IPv4 IPs
             "1.0.0.0/8", "2.0.0.0/8", "3.0.0.0/8", "4.0.0.0/6", "8.0.0.0/7", "11.0.0.0/8",
             "12.0.0.0/6", "16.0.0.0/4", "32.0.0.0/3", "64.0.0.0/2", "128.0.0.0/3",

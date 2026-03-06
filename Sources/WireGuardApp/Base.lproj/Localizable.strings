@@ -133,6 +133,14 @@
 
 "addPeerButtonTitle" = "Add peer";
 
+"allowedIPsPresetRouteAll" = "Route all traffic (IPv4 + IPv6)";
+"allowedIPsPresetRouteIPv4Only" = "Route all IPv4 only";
+"allowedIPsPresetCustom" = "Custom";
+"allowedIPsAddRange" = "Add range…";
+"allowedIPsAddRangeTitle" = "Add Allowed IP Range";
+"allowedIPsAddRangePlaceholder" = "e.g. 10.0.0.0/24";
+"allowedIPsAddRangeInvalid" = "Invalid CIDR range";
+
 "deletePeerButtonTitle" = "Delete peer";
 "deletePeerConfirmationAlertButtonTitle" = "Delete";
 "deletePeerConfirmationAlertMessage" = "Delete this peer?";
