@@ -21,6 +21,7 @@ struct VPNStatusEntry: TimelineEntry {
     let activeConfigName: String?
     let lastHandshakeTime: Date?
     let trafficSamples: [VPNTrafficData.TrafficSample]
+    let discoveredIP: String?
 }
 
 // MARK: - Timeline Provider
@@ -31,7 +32,8 @@ struct VPNStatusProvider: TimelineProvider {
             date: Date(), state: .disconnected, tunnelName: "My Tunnel", connectedAt: nil,
             isOnDemandEnabled: false, hasOnDemandRules: false,
             txBytes: nil, rxBytes: nil, txRate: nil, rxRate: nil,
-            activeConfigName: nil, lastHandshakeTime: nil, trafficSamples: []
+            activeConfigName: nil, lastHandshakeTime: nil, trafficSamples: [],
+            discoveredIP: nil
         )
     }
 
@@ -52,7 +54,8 @@ struct VPNStatusProvider: TimelineProvider {
                 txBytes: 154_200_000, rxBytes: 892_100_000,
                 txRate: 12400, rxRate: 48200,
                 activeConfigName: nil, lastHandshakeTime: Date().addingTimeInterval(-45),
-                trafficSamples: samples
+                trafficSamples: samples,
+                discoveredIP: nil
             ))
         } else {
             completion(buildEntry())
@@ -97,7 +100,8 @@ struct VPNStatusProvider: TimelineProvider {
             rxRate: traffic?.rxRate,
             activeConfigName: traffic?.activeConfigName,
             lastHandshakeTime: traffic?.lastHandshakeTime,
-            trafficSamples: traffic?.trafficSamples ?? []
+            trafficSamples: traffic?.trafficSamples ?? [],
+            discoveredIP: traffic?.discoveredIP
         )
     }
 }
@@ -253,6 +257,17 @@ struct VPNStatusWidgetView: View {
             }
 
             if entry.state == .connected {
+                if let ip = entry.discoveredIP {
+                    Text(ip)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                if let connectedAt = entry.connectedAt {
+                    Text(connectedAt, style: .relative)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
                 if let rxRate = entry.rxRate, let txRate = entry.txRate {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.down")
@@ -325,6 +340,25 @@ struct VPNStatusWidgetView: View {
             if entry.state == .connected {
                 // Right column: traffic stats + sparkline
                 VStack(alignment: .trailing, spacing: 4) {
+                    if let ip = entry.discoveredIP {
+                        HStack(spacing: 2) {
+                            Image(systemName: "network")
+                                .font(.system(size: 8))
+                            Text(ip)
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.secondary)
+                    }
+                    if let connectedAt = entry.connectedAt {
+                        HStack(spacing: 2) {
+                            Text("Connected")
+                                .font(.caption2)
+                            Text(connectedAt, style: .relative)
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.secondary)
+                    }
+
                     if !entry.trafficSamples.isEmpty {
                         SparklineView(samples: entry.trafficSamples, color: .green)
                             .frame(height: 32)

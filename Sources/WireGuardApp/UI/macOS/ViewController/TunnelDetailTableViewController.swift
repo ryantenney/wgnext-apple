@@ -7,6 +7,7 @@ class TunnelDetailTableViewController: NSViewController {
 
     private enum TableViewModelRow {
         case interfaceFieldRow(TunnelViewModel.InterfaceField)
+        case discoveredIPRow
         case peerFieldRow(peer: TunnelViewModel.PeerData, field: TunnelViewModel.PeerField)
         case onDemandRow
         case onDemandSSIDRow
@@ -15,6 +16,7 @@ class TunnelDetailTableViewController: NSViewController {
         func localizedSectionKeyString() -> String {
             switch self {
             case .interfaceFieldRow: return tr("tunnelSectionTitleInterface")
+            case .discoveredIPRow: return ""
             case .peerFieldRow: return tr("tunnelSectionTitlePeer")
             case .onDemandRow: return tr("macFieldOnDemand")
             case .onDemandSSIDRow: return ""
@@ -25,6 +27,7 @@ class TunnelDetailTableViewController: NSViewController {
         func isTitleRow() -> Bool {
             switch self {
             case .interfaceFieldRow(let field): return field == .name
+            case .discoveredIPRow: return false
             case .peerFieldRow(_, let field): return field == .publicKey
             case .onDemandRow: return true
             case .onDemandSSIDRow: return false
@@ -92,6 +95,7 @@ class TunnelDetailTableViewController: NSViewController {
     private var statusObservationToken: AnyObject?
     private var tunnelEditVC: TunnelEditViewController?
     private var reloadRuntimeConfigurationTimer: Timer?
+    private var discoveredIP: String?
 
     init(tunnelsManager: TunnelsManager, tunnel: TunnelContainer) {
         self.tunnelsManager = tunnelsManager
@@ -108,6 +112,12 @@ class TunnelDetailTableViewController: NSViewController {
             } else if tunnel.status == .inactive {
                 self.reloadRuntimeConfiguration()
                 self.stopUpdatingRuntimeConfiguration()
+                if self.discoveredIP != nil {
+                    self.discoveredIP = nil
+                    self.updateTableViewModelRowsBySection()
+                    self.updateTableViewModelRows()
+                    self.tableView.reloadData()
+                }
             }
         }
     }
@@ -179,6 +189,7 @@ class TunnelDetailTableViewController: NSViewController {
             let isEmpty = tunnelViewModel.interfaceData[field].isEmpty
             interfaceSection.append((isVisible: isStatus || !isEmpty, modelRow: .interfaceFieldRow(field)))
         }
+        interfaceSection.append((isVisible: discoveredIP != nil, modelRow: .discoveredIPRow))
         interfaceSection.append((isVisible: true, modelRow: .spacerRow))
         modelRowsBySection.append(interfaceSection)
 
@@ -347,6 +358,16 @@ class TunnelDetailTableViewController: NSViewController {
             guard let tunnelConfiguration = tunnelConfiguration else { return }
             self?.applyTunnelConfiguration(tunnelConfiguration: tunnelConfiguration)
         }
+        reloadDiscoveredIP()
+    }
+
+    private func reloadDiscoveredIP() {
+        let newIP = VPNTrafficData.load()?.discoveredIP
+        guard newIP != discoveredIP else { return }
+        discoveredIP = newIP
+        updateTableViewModelRowsBySection()
+        updateTableViewModelRows()
+        tableView.reloadData()
     }
 
     func startUpdatingRuntimeConfiguration() {
@@ -390,6 +411,12 @@ extension TunnelDetailTableViewController: NSTableViewDelegate {
                 cell.isKeyInBold = modelRow.isTitleRow()
                 return cell
             }
+        case .discoveredIPRow:
+            let cell: KeyValueRow = tableView.dequeueReusableCell()
+            cell.key = tr(format: "macFieldKey (%@)", tr("tunnelDiscoveredIP"))
+            cell.value = discoveredIP ?? ""
+            cell.isKeyInBold = false
+            return cell
         case .peerFieldRow(let peerData, let field):
             let cell: KeyValueRow = tableView.dequeueReusableCell()
             let localizedKeyString = modelRow.isTitleRow() ? modelRow.localizedSectionKeyString() : field.localizedUIString

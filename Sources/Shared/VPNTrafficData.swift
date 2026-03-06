@@ -29,6 +29,8 @@ struct VPNTrafficData: Codable {
     var lastHandshakeTime: Date?
     /// Rolling array of traffic samples for sparkline rendering.
     var trafficSamples: [TrafficSample]
+    /// Public IP address discovered via icanhazip.com, if IP discovery is enabled.
+    var discoveredIP: String?
     /// When this data was last updated by the Network Extension.
     var updatedAt: Date
 

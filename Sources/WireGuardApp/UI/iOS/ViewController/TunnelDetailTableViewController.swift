@@ -7,6 +7,7 @@ class TunnelDetailTableViewController: UITableViewController {
 
     private enum Section {
         case status
+        case discoveredIP
         case interface
         case peer(index: Int, peer: TunnelViewModel.PeerData)
         case onDemand
@@ -40,6 +41,7 @@ class TunnelDetailTableViewController: UITableViewController {
     private var statusObservationToken: AnyObject?
     private var onDemandObservationToken: AnyObject?
     private var reloadRuntimeConfigurationTimer: Timer?
+    private var discoveredIP: String?
 
     init(tunnelsManager: TunnelsManager, tunnel: TunnelContainer) {
         self.tunnelsManager = tunnelsManager
@@ -56,6 +58,11 @@ class TunnelDetailTableViewController: UITableViewController {
             } else if tunnel.status == .inactive {
                 self.reloadRuntimeConfiguration()
                 self.stopUpdatingRuntimeConfiguration()
+                if self.discoveredIP != nil {
+                    self.discoveredIP = nil
+                    self.loadSections()
+                    self.tableView.reloadData()
+                }
             }
         }
         onDemandObservationToken = tunnel.observe(\.isActivateOnDemandEnabled) { [weak self] tunnel, _ in
@@ -87,6 +94,9 @@ class TunnelDetailTableViewController: UITableViewController {
     private func loadSections() {
         sections.removeAll()
         sections.append(.status)
+        if discoveredIP != nil {
+            sections.append(.discoveredIP)
+        }
         sections.append(.interface)
         for (index, peer) in tunnelViewModel.peersData.enumerated() {
             sections.append(.peer(index: index, peer: peer))
@@ -238,6 +248,25 @@ class TunnelDetailTableViewController: UITableViewController {
             guard let self = self else { return }
             self.applyTunnelConfiguration(tunnelConfiguration: tunnelConfiguration)
         }
+        reloadDiscoveredIP()
+    }
+
+    private func reloadDiscoveredIP() {
+        let newIP = VPNTrafficData.load()?.discoveredIP
+        let hadIP = discoveredIP != nil
+        let hasIP = newIP != nil
+        discoveredIP = newIP
+
+        if hadIP != hasIP {
+            // Section visibility changed, reload sections
+            loadSections()
+            tableView.reloadData()
+        } else if hasIP, let sectionIndex = sections.firstIndex(where: { if case .discoveredIP = $0 { return true } else { return false } }) {
+            // Just update the cell value
+            if let cell = tableView.cellForRow(at: IndexPath(row: 0, section: sectionIndex)) as? KeyValueCell {
+                cell.value = newIP ?? ""
+            }
+        }
     }
 
     private func updateActivateOnDemandFields() {
@@ -280,6 +309,8 @@ extension TunnelDetailTableViewController {
         switch sections[section] {
         case .status:
             return 1
+        case .discoveredIP:
+            return 1
         case .interface:
             return interfaceFieldIsVisible.filter { $0 }.count
         case .peer(let peerIndex, _):
@@ -295,6 +326,8 @@ extension TunnelDetailTableViewController {
         switch sections[section] {
         case .status:
             return tr("tunnelSectionTitleStatus")
+        case .discoveredIP:
+            return nil
         case .interface:
             return tr("tunnelSectionTitleInterface")
         case .peer:
@@ -310,6 +343,8 @@ extension TunnelDetailTableViewController {
         switch sections[indexPath.section] {
         case .status:
             return statusCell(for: tableView, at: indexPath)
+        case .discoveredIP:
+            return discoveredIPCell(for: tableView, at: indexPath)
         case .interface:
             return interfaceCell(for: tableView, at: indexPath)
         case .peer(let index, let peer):
@@ -401,6 +436,13 @@ extension TunnelDetailTableViewController {
                 }
             }
         }
+        return cell
+    }
+
+    private func discoveredIPCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell: KeyValueCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.key = tr("tunnelDiscoveredIP")
+        cell.value = discoveredIP ?? ""
         return cell
     }
 

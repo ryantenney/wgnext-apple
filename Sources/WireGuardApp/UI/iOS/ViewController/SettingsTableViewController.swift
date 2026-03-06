@@ -16,6 +16,7 @@ class SettingsTableViewController: UITableViewController {
         case viewLog
         case notifyOnDisconnect
         case notifyOnFailover
+        case ipDiscovery
 
         var localizedUIString: String {
             switch self {
@@ -25,6 +26,7 @@ class SettingsTableViewController: UITableViewController {
             case .viewLog: return tr("settingsViewLogButtonTitle")
             case .notifyOnDisconnect: return tr("settingsNotifyOnDisconnect")
             case .notifyOnFailover: return tr("settingsNotifyOnFailover")
+            case .ipDiscovery: return tr("settingsIPDiscovery")
             }
         }
     }
@@ -32,6 +34,7 @@ class SettingsTableViewController: UITableViewController {
     let settingsFieldsBySection: [[SettingsFields]] = [
         [.iosAppVersion, .goBackendVersion],
         [.notifyOnDisconnect, .notifyOnFailover],
+        [.ipDiscovery],
         [.exportZipArchive],
         [.viewLog]
     ]
@@ -207,8 +210,10 @@ extension SettingsTableViewController {
         case 1:
             return tr("settingsSectionTitleNotifications")
         case 2:
-            return tr("settingsSectionTitleExportConfigurations")
+            return tr("settingsSectionTitleIPDiscovery")
         case 3:
+            return tr("settingsSectionTitleExportConfigurations")
+        case 4:
             return tr("settingsSectionTitleTunnelLog")
         default:
             return nil
@@ -229,6 +234,14 @@ extension SettingsTableViewController {
                 cell.value = appVersion
             } else if field == .goBackendVersion {
                 cell.value = WIREGUARD_GO_VERSION
+            }
+            return cell
+        } else if field == .ipDiscovery {
+            let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.message = field.localizedUIString
+            cell.isOn = IPDiscoverySettings.isEnabled
+            cell.onSwitchToggled = { isOn in
+                IPDiscoverySettings.isEnabled = isOn
             }
             return cell
         } else if field == .notifyOnDisconnect || field == .notifyOnFailover {
