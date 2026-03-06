@@ -114,6 +114,20 @@ private func formatRate(_ bytesPerSecond: Double) -> String {
     }
 }
 
+private func formatDuration(since date: Date) -> String {
+    let seconds = Int(Date().timeIntervalSince(date))
+    if seconds < 60 {
+        return "<1m"
+    }
+    let minutes = seconds / 60
+    let hours = minutes / 60
+    let remainingMinutes = minutes % 60
+    if hours == 0 {
+        return "\(minutes)m"
+    }
+    return "\(hours)h \(remainingMinutes)m"
+}
+
 private func formatBytes(_ bytes: UInt64) -> String {
     if bytes < 1024 {
         return "\(bytes) B"
@@ -202,13 +216,19 @@ struct VPNStatusWidgetView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 statusIcon
-                Text("WireGuard")
+                Text("WGnext")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(.secondary)
             }
 
             Spacer()
+
+            if entry.state == .connected, let connectedAt = entry.connectedAt {
+                Text(formatDuration(since: connectedAt))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
 
             statusLabel
                 .font(.headline)
@@ -233,11 +253,6 @@ struct VPNStatusWidgetView: View {
             }
 
             if entry.state == .connected {
-                if let connectedAt = entry.connectedAt {
-                    Text(connectedAt, style: .relative)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
                 if let rxRate = entry.rxRate, let txRate = entry.txRate {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.down")
@@ -265,13 +280,19 @@ struct VPNStatusWidgetView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     statusIcon
-                    Text("WireGuard")
+                    Text("WGnext")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                 }
 
                 Spacer()
+
+                if entry.state == .connected, let connectedAt = entry.connectedAt {
+                    Text(formatDuration(since: connectedAt))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
 
                 statusLabel
                     .font(.headline)
@@ -304,16 +325,6 @@ struct VPNStatusWidgetView: View {
             if entry.state == .connected {
                 // Right column: traffic stats + sparkline
                 VStack(alignment: .trailing, spacing: 4) {
-                    if let connectedAt = entry.connectedAt {
-                        HStack(spacing: 2) {
-                            Text("Connected")
-                                .font(.caption2)
-                            Text(connectedAt, style: .relative)
-                                .font(.caption2)
-                        }
-                        .foregroundColor(.secondary)
-                    }
-
                     if !entry.trafficSamples.isEmpty {
                         SparklineView(samples: entry.trafficSamples, color: .green)
                             .frame(height: 32)
@@ -336,17 +347,6 @@ struct VPNStatusWidgetView: View {
                             Label(formatBytes(tx), systemImage: "arrow.up.circle")
                         }
                         .font(.caption2)
-                        .foregroundColor(.secondary)
-                    }
-
-                    // Last handshake
-                    if let handshake = entry.lastHandshakeTime {
-                        HStack(spacing: 2) {
-                            Image(systemName: "hand.wave")
-                                .font(.system(size: 8))
-                            Text(handshake, style: .relative)
-                                .font(.caption2)
-                        }
                         .foregroundColor(.secondary)
                     }
                 }
