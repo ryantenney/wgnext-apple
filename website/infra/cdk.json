@@ -1,0 +1,8 @@
+{
+  "app": "npx tsx bin/app.ts",
+  "context": {
+    "domainName": "wgnext.app",
+    "githubOrg": "ryantenney",
+    "githubRepo": "wgnext-apple"
+  }
+}

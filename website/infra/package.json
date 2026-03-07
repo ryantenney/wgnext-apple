@@ -1,0 +1,21 @@
+{
+  "name": "wgnext-infra",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --all",
+    "diff": "cdk diff"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.241.0",
+    "constructs": "^10.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "aws-cdk": "^2.1109.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

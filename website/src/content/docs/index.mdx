@@ -1,0 +1,85 @@
+---
+title: WGnext — WireGuard for iOS & macOS
+description: An actively maintained WireGuard VPN client with automatic tunnel failover.
+template: splash
+hero:
+  title: WireGuard, always connected.
+  tagline: An actively maintained WireGuard VPN client for iOS and macOS with automatic tunnel failover.
+  actions:
+    - text: Get Started
+      link: /guides/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/rtenney/wgnext
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<div class="how-it-works">
+
+## Why WGnext?
+
+The official WireGuard iOS app hasn't been updated since early 2023. WGnext picks up where it left off — actively maintained with regular updates, bug fixes, and a headline feature the original never had: **automatic tunnel failover**.
+
+</div>
+
+<CardGrid>
+  <Card title="Automatic Failover" icon="rocket">
+    Assign tunnels to a failover group. When your primary goes down, WGnext seamlessly switches to the next available tunnel — no manual intervention.
+  </Card>
+  <Card title="Zero-Downtime Switching" icon="random">
+    Hot-swaps the entire tunnel configuration in-place. The OS VPN stays "connected" throughout — apps don't see a disconnect.
+  </Card>
+  <Card title="Smart Health Detection" icon="heart">
+    Traffic-based monitoring detects unhealthy connections within ~40 seconds. No false positives on idle tunnels. Anti-flap protection prevents rapid cycling.
+  </Card>
+  <Card title="Automatic Failback" icon="approve-check">
+    Periodically probes the primary tunnel. When it recovers, WGnext automatically switches back to your preferred connection.
+  </Card>
+  <Card title="On-Demand Activation" icon="setting">
+    Full support for iOS and macOS on-demand rules. Activate your VPN automatically on specific Wi-Fi networks, cellular, or both.
+  </Card>
+  <Card title="Open Source" icon="open-book">
+    GPLv3 licensed. Fork of the official wireguard-apple client. Read the code, contribute, or build your own version.
+  </Card>
+</CardGrid>
+
+<div class="how-it-works">
+
+## How Failover Works
+
+<div class="steps">
+  <div class="step">
+    <span class="step-number">1</span>
+    <h3>Create a group</h3>
+    <p>Add two or more WireGuard tunnels to a failover group in priority order.</p>
+  </div>
+  <div class="step">
+    <span class="step-number">2</span>
+    <h3>Activate once</h3>
+    <p>Turn on the failover group just like a regular tunnel. The primary starts immediately.</p>
+  </div>
+  <div class="step">
+    <span class="step-number">3</span>
+    <h3>Relax</h3>
+    <p>WGnext monitors traffic and switches tunnels automatically. Your VPN stays connected.</p>
+  </div>
+</div>
+
+</div>
+
+<div class="cta-section">
+
+## Ready to get started?
+
+WGnext works with any standard WireGuard server. Import your existing configs and you're up and running in minutes.
+
+<div class="hero-actions">
+  <a href="/guides/quick-start/" class="primary">Quick Start Guide</a>
+  <a href="/features/failover-groups/" class="secondary">Learn about Failover</a>
+</div>
+
+</div>
