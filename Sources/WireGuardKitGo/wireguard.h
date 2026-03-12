@@ -20,4 +20,17 @@ extern void wgBumpSockets(int handle);
 extern void wgDisableSomeRoamingForBrokenMobileSemantics(int handle);
 extern const char *wgVersion();
 
+// Tunnel-in-Tunnel (TiT): runs two wireguard-go instances in-process.
+// INNER uses the real utun fd and a virtual PipedBind (no real UDP sockets).
+// OUTER uses a virtual PipedTun and real UDP sockets (StdNetBind) to reach Server A.
+// outerIfaceIP is the OUTER tunnel's interface address (e.g. "10.200.0.2"), used as the
+// IP source address when wrapping INNER's WireGuard UDP in IP+UDP for OUTER to encrypt.
+extern int32_t wgTurnOnTiT(const char *outerSettings, const char *innerSettings,
+                            const char *outerIfaceIP, int32_t tun_fd);
+extern void    wgTurnOffTiT(int32_t handle);
+extern char   *wgGetConfigTiT(int32_t handle);
+extern int64_t wgSetInnerConfigTiT(int32_t handle, const char *settings);
+extern void    wgBumpSocketsTiT(int32_t handle);
+extern void    wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(int32_t handle);
+
 #endif

@@ -37,6 +37,14 @@ private enum State {
 
     /// The tunnel is temporarily shutdown due to device going offline
     case temporaryShutdown(_ settingsGenerator: PacketTunnelSettingsGenerator)
+
+    /// Tunnel-in-Tunnel: INNER+OUTER devices running, managed by TiT handle.
+    case startedTiT(_ handle: Int32, _ innerSettingsGenerator: PacketTunnelSettingsGenerator)
+
+    /// Tunnel-in-Tunnel paused (iOS offline).
+    case temporaryShutdownTiT(_ innerSettingsGenerator: PacketTunnelSettingsGenerator,
+                              _ outerUapiConfig: String,
+                              _ outerIfaceIP: String)
 }
 
 public class WireGuardAdapter {
@@ -59,6 +67,12 @@ public class WireGuardAdapter {
 
     /// Connection health monitor for failover between tunnel configurations.
     public var healthMonitor: ConnectionHealthMonitor?
+
+    /// Stored OUTER settings generator for TiT restart after iOS offline/online transitions.
+    private var titOuterSettingsGenerator: PacketTunnelSettingsGenerator?
+
+    /// Stored OUTER interface IP string for TiT restart.
+    private var titOuterIfaceIP: String?
 
     /// Tunnel device file descriptor.
     private var tunnelFileDescriptor: Int32? {
@@ -149,8 +163,13 @@ public class WireGuardAdapter {
         networkMonitor?.cancel()
 
         // Shutdown the tunnel
-        if case .started(let handle, _) = self.state {
+        switch self.state {
+        case .started(let handle, _):
             wgTurnOff(handle)
+        case .startedTiT(let handle, _):
+            wgTurnOffTiT(handle)
+        default:
+            break
         }
     }
 
@@ -160,15 +179,22 @@ public class WireGuardAdapter {
     /// - Parameter completionHandler: completion handler.
     public func getRuntimeConfiguration(completionHandler: @escaping (String?) -> Void) {
         workQueue.async {
-            guard case .started(let handle, _) = self.state else {
-                completionHandler(nil)
-                return
-            }
-
-            if let settings = wgGetConfig(handle) {
-                completionHandler(String(cString: settings))
-                free(settings)
-            } else {
+            switch self.state {
+            case .started(let handle, _):
+                if let settings = wgGetConfig(handle) {
+                    completionHandler(String(cString: settings))
+                    free(settings)
+                } else {
+                    completionHandler(nil)
+                }
+            case .startedTiT(let handle, _):
+                if let settings = wgGetConfigTiT(handle) {
+                    completionHandler(String(cString: settings))
+                    free(settings)
+                } else {
+                    completionHandler(nil)
+                }
+            default:
                 completionHandler(nil)
             }
         }
@@ -213,6 +239,78 @@ public class WireGuardAdapter {
         }
     }
 
+    /// Start a tunnel-in-tunnel (TiT) session.
+    /// OUTER connects to `outerTunnelConfiguration` using real UDP sockets.
+    /// INNER handles user traffic through the real utun fd, routing via OUTER.
+    /// - Parameters:
+    ///   - outerTunnelConfiguration: OUTER WireGuard config (Server A).
+    ///   - innerTunnelConfiguration: INNER WireGuard config (Server B); its network settings are applied to the system.
+    ///   - completionHandler: completion handler.
+    public func startTunnelInTunnel(
+        outerTunnelConfiguration: TunnelConfiguration,
+        innerTunnelConfiguration: TunnelConfiguration,
+        completionHandler: @escaping (WireGuardAdapterError?) -> Void
+    ) {
+        workQueue.async {
+            guard case .stopped = self.state else {
+                completionHandler(.invalidState)
+                return
+            }
+
+            let networkMonitor = NWPathMonitor()
+            networkMonitor.pathUpdateHandler = { [weak self] path in
+                self?.didReceivePathUpdate(path: path)
+            }
+            networkMonitor.start(queue: self.workQueue)
+
+            do {
+                // Apply INNER's network settings to the system (DNS, routes, MTU).
+                let innerSettingsGenerator = try self.makeSettingsGenerator(with: innerTunnelConfiguration)
+                try self.setNetworkSettings(innerSettingsGenerator.generateNetworkSettings())
+
+                // Resolve OUTER peers and build UAPI config.
+                let outerSettingsGenerator = try self.makeSettingsGenerator(with: outerTunnelConfiguration)
+                let (outerWgConfig, outerResolutionResults) = outerSettingsGenerator.uapiConfiguration()
+                self.logEndpointResolutionResults(outerResolutionResults)
+
+                // Build INNER's UAPI config (uses PipedBind, so no real endpoint resolution matters).
+                let (innerWgConfig, innerResolutionResults) = innerSettingsGenerator.uapiConfiguration()
+                self.logEndpointResolutionResults(innerResolutionResults)
+
+                // OUTER's first interface address is used as the IP source in the TiT pipe.
+                let outerIfaceIP: String
+                if let firstAddr = outerTunnelConfiguration.interface.addresses.first?.address {
+                    outerIfaceIP = "\(firstAddr)"
+                } else {
+                    outerIfaceIP = "10.200.0.1"
+                }
+
+                guard let tunnelFileDescriptor = self.tunnelFileDescriptor else {
+                    throw WireGuardAdapterError.cannotLocateTunnelFileDescriptor
+                }
+
+                let handle = wgTurnOnTiT(outerWgConfig, innerWgConfig, outerIfaceIP, tunnelFileDescriptor)
+                if handle < 0 {
+                    throw WireGuardAdapterError.startWireGuardBackend(handle)
+                }
+                #if os(iOS)
+                wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle)
+                #endif
+
+                self.titOuterSettingsGenerator = outerSettingsGenerator
+                self.titOuterIfaceIP = outerIfaceIP
+                self.state = .startedTiT(handle, innerSettingsGenerator)
+                self.networkMonitor = networkMonitor
+                completionHandler(nil)
+            } catch let error as WireGuardAdapterError {
+                networkMonitor.cancel()
+                completionHandler(error)
+            } catch {
+                fatalError()
+            }
+        }
+    }
+
     /// Stop the tunnel.
     /// - Parameter completionHandler: completion handler.
     public func stop(completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
@@ -221,7 +319,10 @@ public class WireGuardAdapter {
             case .started(let handle, _):
                 wgTurnOff(handle)
 
-            case .temporaryShutdown:
+            case .startedTiT(let handle, _):
+                wgTurnOffTiT(handle)
+
+            case .temporaryShutdown, .temporaryShutdownTiT:
                 break
 
             case .stopped:
@@ -231,6 +332,8 @@ public class WireGuardAdapter {
 
             self.networkMonitor?.cancel()
             self.networkMonitor = nil
+            self.titOuterSettingsGenerator = nil
+            self.titOuterIfaceIP = nil
 
             self.state = .stopped
 
@@ -275,6 +378,16 @@ public class WireGuardAdapter {
 
                 case .temporaryShutdown:
                     self.state = .temporaryShutdown(settingsGenerator)
+
+                case .startedTiT(let handle, _):
+                    // For TiT, `update` applies to the INNER tunnel configuration.
+                    let (innerWgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
+                    self.logEndpointResolutionResults(resolutionResults)
+                    wgSetInnerConfigTiT(handle, innerWgConfig)
+                    self.state = .startedTiT(handle, settingsGenerator)
+
+                case .temporaryShutdownTiT(_, let outerWgConfig, let outerIfaceIP):
+                    self.state = .temporaryShutdownTiT(settingsGenerator, outerWgConfig, outerIfaceIP)
 
                 case .stopped:
                     fatalError()
@@ -424,8 +537,13 @@ public class WireGuardAdapter {
         self.healthMonitor?.networkPathDidChange()
 
         #if os(macOS)
-        if case .started(let handle, _) = self.state {
+        switch self.state {
+        case .started(let handle, _):
             wgBumpSockets(handle)
+        case .startedTiT(let handle, _):
+            wgBumpSocketsTiT(handle)
+        default:
+            break
         }
         #elseif os(iOS)
         switch self.state {
@@ -461,6 +579,53 @@ public class WireGuardAdapter {
                 )
             } catch {
                 self.logHandler(.error, "Failed to restart backend: \(error.localizedDescription)")
+            }
+
+        case .startedTiT(let handle, let innerSettingsGenerator):
+            if path.status.isSatisfiable {
+                // Update INNER's endpoint config (e.g. after DNS64 re-resolution).
+                let (innerWgConfig, resolutionResults) = innerSettingsGenerator.endpointUapiConfiguration()
+                self.logEndpointResolutionResults(resolutionResults)
+                wgSetInnerConfigTiT(handle, innerWgConfig)
+                // Bump OUTER's real sockets for the new network path.
+                wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle)
+                wgBumpSocketsTiT(handle)
+            } else {
+                self.logHandler(.verbose, "TiT: Connectivity offline, pausing backend.")
+                // Capture enough state to restart TiT on reconnect.
+                if let outerSettingsGenerator = self.titOuterSettingsGenerator {
+                    let (outerWgConfig, _) = outerSettingsGenerator.uapiConfiguration()
+                    let outerIfaceIP = self.titOuterIfaceIP ?? "10.200.0.1"
+                    self.state = .temporaryShutdownTiT(innerSettingsGenerator, outerWgConfig, outerIfaceIP)
+                } else {
+                    self.state = .temporaryShutdown(innerSettingsGenerator)
+                }
+                wgTurnOffTiT(handle)
+            }
+
+        case .temporaryShutdownTiT(let innerSettingsGenerator, let outerWgConfig, let outerIfaceIP):
+            guard path.status.isSatisfiable else { return }
+
+            self.logHandler(.verbose, "TiT: Connectivity online, resuming backend.")
+
+            do {
+                try self.setNetworkSettings(innerSettingsGenerator.generateNetworkSettings())
+
+                let (innerWgConfig, resolutionResults) = innerSettingsGenerator.uapiConfiguration()
+                self.logEndpointResolutionResults(resolutionResults)
+
+                guard let tunnelFileDescriptor = self.tunnelFileDescriptor else {
+                    throw WireGuardAdapterError.cannotLocateTunnelFileDescriptor
+                }
+
+                let handle = wgTurnOnTiT(outerWgConfig, innerWgConfig, outerIfaceIP, tunnelFileDescriptor)
+                if handle < 0 {
+                    throw WireGuardAdapterError.startWireGuardBackend(handle)
+                }
+                wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle)
+                self.state = .startedTiT(handle, innerSettingsGenerator)
+            } catch {
+                self.logHandler(.error, "TiT: Failed to restart backend: \(error.localizedDescription)")
             }
 
         case .stopped:
