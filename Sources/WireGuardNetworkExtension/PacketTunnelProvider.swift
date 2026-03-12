@@ -15,6 +15,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }()
 
+    /// TiT outer config (Server A), if tunnel-in-tunnel is configured.
+    private var titOuterConfig: TunnelConfiguration?
+
+    /// TiT inner config (Server B), if tunnel-in-tunnel is configured.
+    private var titInnerConfig: TunnelConfiguration?
+
     /// All tunnel configurations for failover (index 0 = primary). Empty if failover is not configured.
     private var failoverConfigs: [TunnelConfiguration] = []
 
@@ -61,6 +67,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // Load failover configurations from providerConfiguration, if present
         let providerConfig = tunnelProviderProtocol.providerConfiguration
         loadFailoverConfigs(from: providerConfig)
+        loadTiTConfigs(from: providerConfig)
+
+        // Tunnel-in-Tunnel: start with paired outer+inner configs if present.
+        if let outer = titOuterConfig, let inner = titInnerConfig {
+            wg_log(.info, message: "TiT: starting tunnel-in-tunnel (outer→inner)")
+            adapter.startTunnelInTunnel(
+                outerTunnelConfiguration: outer,
+                innerTunnelConfiguration: inner
+            ) { adapterError in
+                guard let adapterError = adapterError else {
+                    wg_log(.info, message: "TiT: tunnel interface is \(self.adapter.interfaceName ?? "unknown")")
+                    self.startStatsWriter()
+                    completionHandler(nil)
+                    return
+                }
+                self.handleStartAdapterError(adapterError, notifier: errorNotifier, completionHandler: completionHandler)
+            }
+            return
+        }
 
         // Determine the primary tunnel configuration
         let tunnelConfiguration: TunnelConfiguration
@@ -79,47 +104,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // Start the tunnel
         adapter.start(tunnelConfiguration: tunnelConfiguration) { adapterError in
             guard let adapterError = adapterError else {
-                let interfaceName = self.adapter.interfaceName ?? "unknown"
-
-                wg_log(.info, message: "Tunnel interface is \(interfaceName)")
-
-                // Start health monitor if failover is configured
+                wg_log(.info, message: "Tunnel interface is \(self.adapter.interfaceName ?? "unknown")")
                 self.startHealthMonitorIfNeeded(providerConfig: providerConfig)
-
-                // Start writing traffic stats to shared UserDefaults for the widget
                 self.startStatsWriter()
-
                 completionHandler(nil)
                 return
             }
-
-            switch adapterError {
-            case .cannotLocateTunnelFileDescriptor:
-                wg_log(.error, staticMessage: "Starting tunnel failed: could not determine file descriptor")
-                errorNotifier.notify(PacketTunnelProviderError.couldNotDetermineFileDescriptor)
-                completionHandler(PacketTunnelProviderError.couldNotDetermineFileDescriptor)
-
-            case .dnsResolution(let dnsErrors):
-                let hostnamesWithDnsResolutionFailure = dnsErrors.map { $0.address }
-                    .joined(separator: ", ")
-                wg_log(.error, message: "DNS resolution failed for the following hostnames: \(hostnamesWithDnsResolutionFailure)")
-                errorNotifier.notify(PacketTunnelProviderError.dnsResolutionFailure)
-                completionHandler(PacketTunnelProviderError.dnsResolutionFailure)
-
-            case .setNetworkSettings(let error):
-                wg_log(.error, message: "Starting tunnel failed with setTunnelNetworkSettings returning \(error.localizedDescription)")
-                errorNotifier.notify(PacketTunnelProviderError.couldNotSetNetworkSettings)
-                completionHandler(PacketTunnelProviderError.couldNotSetNetworkSettings)
-
-            case .startWireGuardBackend(let errorCode):
-                wg_log(.error, message: "Starting tunnel failed with wgTurnOn returning \(errorCode)")
-                errorNotifier.notify(PacketTunnelProviderError.couldNotStartBackend)
-                completionHandler(PacketTunnelProviderError.couldNotStartBackend)
-
-            case .invalidState:
-                // Must never happen
-                fatalError()
-            }
+            self.handleStartAdapterError(adapterError, notifier: errorNotifier, completionHandler: completionHandler)
         }
     }
 
@@ -357,6 +348,55 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     // MARK: - Failover Setup
+
+    private func handleStartAdapterError(
+        _ adapterError: WireGuardAdapterError,
+        notifier errorNotifier: ErrorNotifier,
+        completionHandler: @escaping (Error?) -> Void
+    ) {
+        switch adapterError {
+        case .cannotLocateTunnelFileDescriptor:
+            wg_log(.error, staticMessage: "Starting tunnel failed: could not determine file descriptor")
+            errorNotifier.notify(PacketTunnelProviderError.couldNotDetermineFileDescriptor)
+            completionHandler(PacketTunnelProviderError.couldNotDetermineFileDescriptor)
+        case .dnsResolution(let dnsErrors):
+            let failed = dnsErrors.map { $0.address }.joined(separator: ", ")
+            wg_log(.error, message: "DNS resolution failed for the following hostnames: \(failed)")
+            errorNotifier.notify(PacketTunnelProviderError.dnsResolutionFailure)
+            completionHandler(PacketTunnelProviderError.dnsResolutionFailure)
+        case .setNetworkSettings(let error):
+            wg_log(.error, message: "Starting tunnel failed with setTunnelNetworkSettings returning \(error.localizedDescription)")
+            errorNotifier.notify(PacketTunnelProviderError.couldNotSetNetworkSettings)
+            completionHandler(PacketTunnelProviderError.couldNotSetNetworkSettings)
+        case .startWireGuardBackend(let errorCode):
+            wg_log(.error, message: "Starting tunnel failed with wgTurnOn returning \(errorCode)")
+            errorNotifier.notify(PacketTunnelProviderError.couldNotStartBackend)
+            completionHandler(PacketTunnelProviderError.couldNotStartBackend)
+        case .invalidState:
+            fatalError()
+        }
+    }
+
+    // MARK: - Tunnel-in-Tunnel Setup
+
+    private func loadTiTConfigs(from providerConfig: [String: Any]?) {
+        guard
+            let outerConfigString = providerConfig?["TiTOuterConfig"] as? String,
+            let innerConfigString = providerConfig?["TiTInnerConfig"] as? String
+        else { return }
+
+        let outerName = providerConfig?["TiTOuterName"] as? String
+        let innerName = providerConfig?["TiTInnerName"] as? String
+
+        do {
+            titOuterConfig = try TunnelConfiguration(fromWgQuickConfig: outerConfigString, called: outerName)
+            titInnerConfig = try TunnelConfiguration(fromWgQuickConfig: innerConfigString, called: innerName)
+        } catch {
+            wg_log(.error, message: "TiT: failed to parse configs: \(error)")
+            titOuterConfig = nil
+            titInnerConfig = nil
+        }
+    }
 
     private func loadFailoverConfigs(from providerConfig: [String: Any]?) {
         guard let configStrings = providerConfig?["FailoverConfigs"] as? [String] else { return }
