@@ -37,6 +37,34 @@ class FailoverGroupDetailTableViewController: NSViewController {
         }
     }
 
+    private enum ConnectionStatus {
+        case active
+        case unhealthy
+        case hotSpareReady
+        case hotSpareWaiting
+        case probing
+        case idle
+
+        var indicatorColor: NSColor {
+            switch self {
+            case .active, .hotSpareReady: return .systemGreen
+            case .unhealthy, .hotSpareWaiting, .probing: return .systemYellow
+            case .idle: return .systemGray
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .active: return "Active"
+            case .unhealthy: return "Unhealthy"
+            case .hotSpareReady: return "Standby"
+            case .hotSpareWaiting: return "Connecting"
+            case .probing: return "Probing"
+            case .idle: return "Idle"
+            }
+        }
+    }
+
     private enum ActiveConnectionField {
         case activeConfig
         case dataReceived
@@ -340,10 +368,39 @@ class FailoverGroupDetailTableViewController: NSViewController {
         if let probing = state["isProbing"] as? Bool, probing {
             fields.append(.failbackProbe)
         }
-        if let hotSpareActive = state["hotSpareActive"] as? Bool, hotSpareActive {
+        if state["hotSpareConfigIndex"] as? Int != nil {
             fields.append(.hotSpare)
         }
         return fields
+    }
+
+    // MARK: - Per-Tunnel Status
+
+    private func connectionStatus(forTunnelAt index: Int) -> ConnectionStatus {
+        guard tunnel.status == .active, let state = failoverState else { return .idle }
+
+        let name = tunnelNames[index]
+
+        if let activeName = activeConfigName, activeName == name {
+            if state["txWithoutRxSince"] as? Double != nil {
+                return .unhealthy
+            }
+            return .active
+        }
+
+        if let hotSpareIndex = state["hotSpareConfigIndex"] as? Int, hotSpareIndex == index {
+            if let age = state["hotSpareHandshakeAge"] as? Double, age < settings.trafficTimeout {
+                return .hotSpareReady
+            }
+            let isActive = state["hotSpareActive"] as? Bool ?? false
+            return isActive ? .hotSpareWaiting : .idle
+        }
+
+        if index == 0, let probing = state["isProbing"] as? Bool, probing {
+            return .probing
+        }
+
+        return .idle
     }
 
     // MARK: - Formatting
@@ -421,7 +478,15 @@ class FailoverGroupDetailTableViewController: NSViewController {
         case .hotSpare:
             if let index = state["hotSpareConfigIndex"] as? Int {
                 let name = index < tunnelNames.count ? tunnelNames[index] : "config #\(index)"
-                return "Monitoring \(name)"
+                if let age = state["hotSpareHandshakeAge"] as? Double {
+                    if age < settings.trafficTimeout {
+                        return "\(name): Connected (\(Int(age))s ago)"
+                    } else {
+                        return "\(name): Stale handshake (\(Int(age))s ago)"
+                    }
+                }
+                let isActive = state["hotSpareActive"] as? Bool ?? false
+                return isActive ? "\(name): Waiting for handshake..." : "\(name): Starting..."
             }
             return "Active"
         }
@@ -511,13 +576,21 @@ extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
 
         case .tunnelRow(let name, let index):
             let cell: KeyValueRow = tableView.dequeueReusableCell()
-            var label = index == 0 ? "Primary" : "Fallback #\(index)"
-            if let activeConfigName = activeConfigName, activeConfigName == name {
-                label += " (Active)"
-            }
-            cell.key = tr(format: "macFieldKey (%@)", name)
-            cell.value = label
-            cell.isKeyInBold = index == 0
+            let role = index == 0 ? "Primary" : "Failover #\(index)"
+            let status = connectionStatus(forTunnelAt: index)
+            let circle = NSAttributedString(string: "\u{25CF} ", attributes: [
+                .foregroundColor: status.indicatorColor,
+                .font: NSFont.systemFont(ofSize: 12)
+            ])
+            let nameAttr = NSAttributedString(string: name, attributes: [
+                .foregroundColor: NSColor.labelColor,
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            ])
+            let combined = NSMutableAttributedString()
+            combined.append(circle)
+            combined.append(nameAttr)
+            cell.keyLabel.attributedStringValue = combined
+            cell.value = "\(role) · \(status.label)"
             return cell
 
         case .activeConnectionRow(let field):

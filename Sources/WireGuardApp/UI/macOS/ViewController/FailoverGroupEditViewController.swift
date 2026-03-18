@@ -21,6 +21,8 @@ class FailoverGroupEditViewController: NSViewController {
     private var healthCheckInterval: TimeInterval
     private var failbackProbeInterval: TimeInterval
     private var autoFailback: Bool
+    private var useBackgroundProbes: Bool
+    private var hotSpare: Bool
     private var persistentKeepaliveOverride: UInt16?
     private var onDemandViewModel: ActivateOnDemandViewModel
 
@@ -114,6 +116,32 @@ class FailoverGroupEditViewController: NSViewController {
         return view
     }()
 
+    let useBackgroundProbesCheckbox: NSButton = {
+        let checkbox = NSButton()
+        checkbox.title = "Background Probes"
+        checkbox.setButtonType(.switch)
+        checkbox.state = .on
+        return checkbox
+    }()
+
+    let useBackgroundProbesRow: NSView = {
+        let view = NSView()
+        return view
+    }()
+
+    let hotSpareCheckbox: NSButton = {
+        let checkbox = NSButton()
+        checkbox.title = "Hot Spare"
+        checkbox.setButtonType(.switch)
+        checkbox.state = .off
+        return checkbox
+    }()
+
+    let hotSpareRow: NSView = {
+        let view = NSView()
+        return view
+    }()
+
     let persistentKeepaliveCheckbox: NSButton = {
         let checkbox = NSButton()
         checkbox.title = "Override Persistent Keepalive"
@@ -178,6 +206,8 @@ class FailoverGroupEditViewController: NSViewController {
             self.healthCheckInterval = settings.healthCheckInterval
             self.failbackProbeInterval = settings.failbackProbeInterval
             self.autoFailback = settings.autoFailback
+            self.useBackgroundProbes = settings.useBackgroundProbes
+            self.hotSpare = settings.hotSpare
             self.persistentKeepaliveOverride = settings.persistentKeepaliveOverride
             self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: tunnel)
         } else {
@@ -186,6 +216,8 @@ class FailoverGroupEditViewController: NSViewController {
             self.healthCheckInterval = 10
             self.failbackProbeInterval = 300
             self.autoFailback = true
+            self.useBackgroundProbes = true
+            self.hotSpare = false
             self.persistentKeepaliveOverride = nil
             self.onDemandViewModel = ActivateOnDemandViewModel(from: OnDemandActivation())
         }
@@ -245,6 +277,48 @@ class FailoverGroupEditViewController: NSViewController {
             autoFailbackCheckbox.centerYAnchor.constraint(equalTo: autoFailbackRow.centerYAnchor),
             autoFailbackRow.topAnchor.constraint(equalTo: autoFailbackCheckbox.topAnchor),
             autoFailbackRow.bottomAnchor.constraint(equalTo: autoFailbackCheckbox.bottomAnchor)
+        ])
+
+        // Background probes row layout
+        let bgProbesKeyLabel = NSTextField()
+        bgProbesKeyLabel.stringValue = ""
+        bgProbesKeyLabel.isEditable = false
+        bgProbesKeyLabel.isSelectable = false
+        bgProbesKeyLabel.isBordered = false
+        bgProbesKeyLabel.backgroundColor = .clear
+
+        useBackgroundProbesRow.addSubview(bgProbesKeyLabel)
+        useBackgroundProbesRow.addSubview(useBackgroundProbesCheckbox)
+        bgProbesKeyLabel.translatesAutoresizingMaskIntoConstraints = false
+        useBackgroundProbesCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            bgProbesKeyLabel.leadingAnchor.constraint(equalTo: useBackgroundProbesRow.leadingAnchor),
+            bgProbesKeyLabel.widthAnchor.constraint(equalToConstant: 155),
+            useBackgroundProbesCheckbox.leadingAnchor.constraint(equalTo: bgProbesKeyLabel.trailingAnchor),
+            useBackgroundProbesCheckbox.centerYAnchor.constraint(equalTo: useBackgroundProbesRow.centerYAnchor),
+            useBackgroundProbesRow.topAnchor.constraint(equalTo: useBackgroundProbesCheckbox.topAnchor),
+            useBackgroundProbesRow.bottomAnchor.constraint(equalTo: useBackgroundProbesCheckbox.bottomAnchor)
+        ])
+
+        // Hot spare row layout
+        let hotSpareKeyLabel = NSTextField()
+        hotSpareKeyLabel.stringValue = ""
+        hotSpareKeyLabel.isEditable = false
+        hotSpareKeyLabel.isSelectable = false
+        hotSpareKeyLabel.isBordered = false
+        hotSpareKeyLabel.backgroundColor = .clear
+
+        hotSpareRow.addSubview(hotSpareKeyLabel)
+        hotSpareRow.addSubview(hotSpareCheckbox)
+        hotSpareKeyLabel.translatesAutoresizingMaskIntoConstraints = false
+        hotSpareCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            hotSpareKeyLabel.leadingAnchor.constraint(equalTo: hotSpareRow.leadingAnchor),
+            hotSpareKeyLabel.widthAnchor.constraint(equalToConstant: 155),
+            hotSpareCheckbox.leadingAnchor.constraint(equalTo: hotSpareKeyLabel.trailingAnchor),
+            hotSpareCheckbox.centerYAnchor.constraint(equalTo: hotSpareRow.centerYAnchor),
+            hotSpareRow.topAnchor.constraint(equalTo: hotSpareCheckbox.topAnchor),
+            hotSpareRow.bottomAnchor.constraint(equalTo: hotSpareCheckbox.bottomAnchor)
         ])
 
         // Persistent keepalive override row layout
@@ -310,7 +384,7 @@ class FailoverGroupEditViewController: NSViewController {
         let margin: CGFloat = 20
         let internalSpacing: CGFloat = 10
 
-        var editorViews: [NSView] = [nameRow, connectionsArea, settingsLabel, trafficTimeoutRow, healthCheckIntervalRow, failbackProbeIntervalRow, autoFailbackRow, persistentKeepaliveRow, persistentKeepaliveValueRow, onDemandControlsRow]
+        var editorViews: [NSView] = [nameRow, connectionsArea, settingsLabel, trafficTimeoutRow, healthCheckIntervalRow, failbackProbeIntervalRow, autoFailbackRow, useBackgroundProbesRow, hotSpareRow, persistentKeepaliveRow, persistentKeepaliveValueRow, onDemandControlsRow]
 
         let editorStackView = NSStackView(views: editorViews)
         editorStackView.orientation = .vertical
@@ -346,6 +420,8 @@ class FailoverGroupEditViewController: NSViewController {
         healthCheckIntervalRow.value = "\(Int(healthCheckInterval))"
         failbackProbeIntervalRow.value = "\(Int(failbackProbeInterval))"
         autoFailbackCheckbox.state = autoFailback ? .on : .off
+        useBackgroundProbesCheckbox.state = useBackgroundProbes ? .on : .off
+        hotSpareCheckbox.state = hotSpare ? .on : .off
         persistentKeepaliveCheckbox.state = persistentKeepaliveOverride != nil ? .on : .off
         persistentKeepaliveValueRow.value = "\(persistentKeepaliveOverride ?? 25)"
         persistentKeepaliveValueRow.isHidden = persistentKeepaliveOverride == nil
@@ -390,6 +466,8 @@ class FailoverGroupEditViewController: NSViewController {
             healthCheckInterval: healthCheck,
             failbackProbeInterval: failbackProbe,
             autoFailback: autoFailbackCheckbox.state == .on,
+            useBackgroundProbes: useBackgroundProbesCheckbox.state == .on,
+            hotSpare: hotSpareCheckbox.state == .on,
             persistentKeepaliveOverride: keepaliveOverride
         )
 

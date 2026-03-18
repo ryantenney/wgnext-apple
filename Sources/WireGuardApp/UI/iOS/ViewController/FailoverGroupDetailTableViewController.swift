@@ -34,6 +34,34 @@ class FailoverGroupDetailTableViewController: UITableViewController {
         }
     }
 
+    private enum ConnectionStatus {
+        case active          // green: this tunnel is active and healthy
+        case unhealthy       // yellow: this tunnel is active but tx without rx
+        case hotSpareReady   // green: hot spare with valid handshake
+        case hotSpareWaiting // yellow: hot spare probe running, no handshake yet
+        case probing         // yellow: failback probe in progress for this tunnel
+        case idle            // gray: not active, not being probed
+
+        var indicatorColor: UIColor {
+            switch self {
+            case .active, .hotSpareReady: return .systemGreen
+            case .unhealthy, .hotSpareWaiting, .probing: return .systemYellow
+            case .idle: return .systemGray
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .active: return "Active"
+            case .unhealthy: return "Unhealthy"
+            case .hotSpareReady: return "Standby"
+            case .hotSpareWaiting: return "Connecting"
+            case .probing: return "Probing"
+            case .idle: return "Idle"
+            }
+        }
+    }
+
     private enum ActiveConnectionField {
         case dataReceived
         case dataSent
@@ -207,19 +235,19 @@ class FailoverGroupDetailTableViewController: UITableViewController {
                     if let idx = self.sections.firstIndex(of: .activeConnection) {
                         self.tableView.insertSections(IndexSet(integer: idx), with: .automatic)
                     }
-                    if activeConfigChanged, let tunnelsIdx = self.sections.firstIndex(of: .tunnels) {
+                    if let tunnelsIdx = self.sections.firstIndex(of: .tunnels) {
                         self.tableView.reloadSections(IndexSet(integer: tunnelsIdx), with: .none)
                     }
                 } else if hadSection && !needsSection {
                     // Section disappeared — reload all to be safe
                     self.tableView.reloadData()
                 } else {
-                    // Reload changed sections
+                    // Reload tunnels + active connection sections on every poll
                     var reloadSet = IndexSet()
-                    if needsSection, let idx = self.sections.firstIndex(of: .activeConnection) {
-                        reloadSet.insert(idx)
+                    if let tunnelsIdx = self.sections.firstIndex(of: .tunnels) {
+                        reloadSet.insert(tunnelsIdx)
                     }
-                    if activeConfigChanged, let idx = self.sections.firstIndex(of: .tunnels) {
+                    if needsSection, let idx = self.sections.firstIndex(of: .activeConnection) {
                         reloadSet.insert(idx)
                     }
                     if !reloadSet.isEmpty {
@@ -254,7 +282,7 @@ class FailoverGroupDetailTableViewController: UITableViewController {
         if let probing = state["isProbing"] as? Bool, probing {
             fields.append(.failbackProbe)
         }
-        if let hotSpareActive = state["hotSpareActive"] as? Bool, hotSpareActive {
+        if state["hotSpareConfigIndex"] as? Int != nil {
             fields.append(.hotSpare)
         }
 
@@ -266,6 +294,38 @@ class FailoverGroupDetailTableViewController: UITableViewController {
     private func updateActivateOnDemandFields() {
         guard let onDemandSection = sections.firstIndex(of: .onDemand) else { return }
         tableView.reloadSections(IndexSet(integer: onDemandSection), with: .automatic)
+    }
+
+    // MARK: - Per-Tunnel Status
+
+    private func connectionStatus(forTunnelAt index: Int) -> ConnectionStatus {
+        guard tunnel.status == .active, let state = failoverState else { return .idle }
+
+        let name = tunnelNames[index]
+
+        // Is this the active tunnel?
+        if let activeName = activeConfigName, activeName == name {
+            if state["txWithoutRxSince"] as? Double != nil {
+                return .unhealthy
+            }
+            return .active
+        }
+
+        // Is this the hot spare target?
+        if let hotSpareIndex = state["hotSpareConfigIndex"] as? Int, hotSpareIndex == index {
+            if let age = state["hotSpareHandshakeAge"] as? Double, age < settings.trafficTimeout {
+                return .hotSpareReady
+            }
+            let isActive = state["hotSpareActive"] as? Bool ?? false
+            return isActive ? .hotSpareWaiting : .idle
+        }
+
+        // Is this being failback-probed? (failback always probes index 0)
+        if index == 0, let probing = state["isProbing"] as? Bool, probing {
+            return .probing
+        }
+
+        return .idle
     }
 
     // MARK: - Formatting Helpers
@@ -475,15 +535,27 @@ extension FailoverGroupDetailTableViewController {
     }
 
     private func tunnelCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
-        let cell: KeyValueCell = tableView.dequeueReusableCell(for: indexPath)
+        let cell = UITableViewCell(style: .value1, reuseIdentifier: "TunnelCell")
         let name = tunnelNames[indexPath.row]
-        cell.key = name
-        var detail = indexPath.row == 0 ? "Primary" : "Fallback #\(indexPath.row)"
-        if let activeConfigName = activeConfigName, activeConfigName == name {
-            detail += " (Active)"
-        }
-        cell.value = detail
-        cell.copyableGesture = false
+        let role = indexPath.row == 0 ? "Primary" : "Failover #\(indexPath.row)"
+        let status = connectionStatus(forTunnelAt: indexPath.row)
+
+        let circle = NSAttributedString(string: "\u{25CF} ", attributes: [
+            .foregroundColor: status.indicatorColor,
+            .font: UIFont.systemFont(ofSize: 14)
+        ])
+        let nameAttr = NSAttributedString(string: name, attributes: [
+            .foregroundColor: UIColor.label,
+            .font: UIFont.systemFont(ofSize: 17)
+        ])
+        let combined = NSMutableAttributedString()
+        combined.append(circle)
+        combined.append(nameAttr)
+        cell.textLabel?.attributedText = combined
+
+        cell.detailTextLabel?.text = "\(role) · \(status.label)"
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.selectionStyle = .none
         return cell
     }
 
@@ -546,7 +618,15 @@ extension FailoverGroupDetailTableViewController {
         case .hotSpare:
             if let index = state["hotSpareConfigIndex"] as? Int {
                 let name = index < tunnelNames.count ? tunnelNames[index] : "config #\(index)"
-                return "Monitoring \(name)"
+                if let age = state["hotSpareHandshakeAge"] as? Double {
+                    if age < settings.trafficTimeout {
+                        return "\(name): Connected (\(Int(age))s ago)"
+                    } else {
+                        return "\(name): Stale handshake (\(Int(age))s ago)"
+                    }
+                }
+                let isActive = state["hotSpareActive"] as? Bool ?? false
+                return isActive ? "\(name): Waiting for handshake..." : "\(name): Starting..."
             }
             return "Active"
         }

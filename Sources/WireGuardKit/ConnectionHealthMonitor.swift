@@ -655,16 +655,37 @@ public class ConnectionHealthMonitor {
             if self.failbackProbeHandle != nil {
                 state["backgroundProbeActive"] = true
             }
-            if let hotSpareIndex = self.hotSpareConfigIndex {
-                state["hotSpareConfigIndex"] = hotSpareIndex
-                state["hotSpareActive"] = self.hotSpareHandle != nil
-            }
             if self.lastSwitchTime != .distantPast {
                 state["lastSwitchTime"] = self.lastSwitchTime.timeIntervalSince1970
             }
             if let txWithoutRxSince = self.txWithoutRxSince {
                 state["txWithoutRxSince"] = txWithoutRxSince.timeIntervalSince1970
             }
+
+            // If hot spare is running, query its probe for handshake status
+            if let hotSpareIndex = self.hotSpareConfigIndex {
+                state["hotSpareConfigIndex"] = hotSpareIndex
+                if let handle = self.hotSpareHandle, let adapter = self.adapter {
+                    state["hotSpareActive"] = true
+                    adapter.getProbeRuntimeConfiguration(handle: handle) { configString in
+                        self.workQueue.async {
+                            if let configString = configString {
+                                let age = Self.parseLastHandshakeAge(from: configString)
+                                if age < .infinity {
+                                    state["hotSpareHandshakeAge"] = age
+                                }
+                            }
+                            completionHandler(state)
+                        }
+                    }
+                    return
+                } else {
+                    state["hotSpareActive"] = false
+                    completionHandler(state)
+                    return
+                }
+            }
+
             completionHandler(state)
         }
     }

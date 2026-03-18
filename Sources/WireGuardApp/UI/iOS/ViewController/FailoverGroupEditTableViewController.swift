@@ -24,6 +24,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
     private var healthCheckInterval: TimeInterval
     private var failbackProbeInterval: TimeInterval
     private var autoFailback: Bool
+    private var useBackgroundProbes: Bool
+    private var hotSpare: Bool
     private var persistentKeepaliveOverride: UInt16?
 
     // On-demand activation
@@ -47,6 +49,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case healthCheckInterval
         case failbackProbeInterval
         case autoFailback
+        case useBackgroundProbes
+        case hotSpare
         case persistentKeepaliveToggle
         case persistentKeepaliveValue
     }
@@ -70,6 +74,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
             self.healthCheckInterval = settings.healthCheckInterval
             self.failbackProbeInterval = settings.failbackProbeInterval
             self.autoFailback = settings.autoFailback
+            self.useBackgroundProbes = settings.useBackgroundProbes
+            self.hotSpare = settings.hotSpare
             self.persistentKeepaliveOverride = settings.persistentKeepaliveOverride
 
             self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: groupTunnel)
@@ -80,6 +86,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
             self.healthCheckInterval = 10
             self.failbackProbeInterval = 300
             self.autoFailback = true
+            self.useBackgroundProbes = true
+            self.hotSpare = false
             self.persistentKeepaliveOverride = nil
             self.onDemandViewModel = ActivateOnDemandViewModel(from: OnDemandActivation())
         }
@@ -131,6 +139,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 healthCheckInterval: self.healthCheckInterval,
                 failbackProbeInterval: self.failbackProbeInterval,
                 autoFailback: self.autoFailback,
+                useBackgroundProbes: self.useBackgroundProbes,
+                hotSpare: self.hotSpare,
                 persistentKeepaliveOverride: self.persistentKeepaliveOverride
             )
             self.onDemandViewModel.fixSSIDOption()
@@ -296,6 +306,22 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 cell.isOn = autoFailback
                 cell.onSwitchToggled = { [weak self] isOn in
                     self?.autoFailback = isOn
+                }
+                return cell
+            case .useBackgroundProbes:
+                let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+                cell.message = "Background Probes"
+                cell.isOn = useBackgroundProbes
+                cell.onSwitchToggled = { [weak self] isOn in
+                    self?.useBackgroundProbes = isOn
+                }
+                return cell
+            case .hotSpare:
+                let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+                cell.message = "Hot Spare"
+                cell.isOn = hotSpare
+                cell.onSwitchToggled = { [weak self] isOn in
+                    self?.hotSpare = isOn
                 }
                 return cell
             case .persistentKeepaliveToggle:
@@ -484,7 +510,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .failbackProbeInterval:
             title = "Failback Probe Interval (seconds)"
             currentValue = Int(failbackProbeInterval)
-        case .autoFailback, .persistentKeepaliveToggle, .persistentKeepaliveValue:
+        case .autoFailback, .useBackgroundProbes, .hotSpare, .persistentKeepaliveToggle, .persistentKeepaliveValue:
             return
         }
 
@@ -504,7 +530,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 self.healthCheckInterval = TimeInterval(value)
             case .failbackProbeInterval:
                 self.failbackProbeInterval = TimeInterval(value)
-            case .autoFailback, .persistentKeepaliveToggle, .persistentKeepaliveValue:
+            case .autoFailback, .useBackgroundProbes, .hotSpare, .persistentKeepaliveToggle, .persistentKeepaliveValue:
                 break
             }
             self.tableView.reloadSections(IndexSet(integer: Section.settings.rawValue), with: .none)

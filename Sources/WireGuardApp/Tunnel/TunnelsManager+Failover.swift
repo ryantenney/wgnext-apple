@@ -153,7 +153,7 @@ extension TunnelsManager {
                 return (tunnelName, config)
             }
             if let storedConfig = existingConfigByName[tunnelName] {
-                wg_log(.verbose, message: "Failover: using stored config for tunnel '\(tunnelName)'")
+                wg_log(.debug, message: "Failover: using stored config for tunnel '\(tunnelName)'")
                 return (tunnelName, storedConfig)
             }
             wg_log(.error, message: "Failover: could not load config for tunnel '\(tunnelName)'")
