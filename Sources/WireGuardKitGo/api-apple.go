@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -221,6 +222,336 @@ func wgVersion() *C.char {
 		}
 	}
 	return C.CString("unknown")
+}
+
+// ========== Background Probe Support ==========
+//
+// A probe runs a lightweight wireguard-go device with real UDP sockets but a
+// swappable tun device (initially null, discards decrypted packets). This lets
+// us perform a full Noise IK handshake with a remote peer to verify reachability
+// without disrupting the active tunnel's traffic flow.
+//
+// When a hot spare is promoted to become the active tunnel, we swap the null tun
+// for the real utun fd. The wireguard-go goroutines keep running with their
+// existing Noise session — no re-handshake needed.
+
+// swappableTunDevice wraps an inner tun.Device and allows atomic replacement.
+// Used by probes: starts with a nullTunDevice, can be promoted to a real utun.
+// The wireguard-go read/write goroutines see the wrapper and never know the
+// inner device changed.
+//
+// Uses atomic.Value for lock-free reads on the hot path (Read/Write).
+// The only write (swap) happens once during probe promotion.
+type swappableTunDevice struct {
+	inner  atomic.Value // stores tun.Device
+	events chan tun.Event
+	closed chan struct{}
+}
+
+func newSwappableTunDevice(inner tun.Device) *swappableTunDevice {
+	dev := &swappableTunDevice{
+		events: make(chan tun.Event, 4),
+		closed: make(chan struct{}),
+	}
+	dev.inner.Store(inner)
+	// Forward initial EventUp
+	dev.events <- tun.EventUp
+	return dev
+}
+
+func (s *swappableTunDevice) getInner() tun.Device {
+	return s.inner.Load().(tun.Device)
+}
+
+func (s *swappableTunDevice) File() *os.File { return nil }
+
+func (s *swappableTunDevice) Read(data []byte, offset int) (int, error) {
+	for {
+		inner := s.getInner()
+		n, err := inner.Read(data, offset)
+		if err != nil {
+			// If the inner was a nullTun that got closed during swap, retry with new inner.
+			select {
+			case <-s.closed:
+				return 0, os.ErrClosed
+			default:
+				// Check if the inner changed (swap happened while we were blocked).
+				if s.getInner() != inner {
+					// Inner was swapped — retry read with the new device.
+					continue
+				}
+				return 0, err
+			}
+		}
+		return n, nil
+	}
+}
+
+func (s *swappableTunDevice) Write(data []byte, offset int) (int, error) {
+	return s.getInner().Write(data, offset)
+}
+
+func (s *swappableTunDevice) Flush() error {
+	return s.getInner().Flush()
+}
+
+func (s *swappableTunDevice) MTU() (int, error) {
+	return s.getInner().MTU()
+}
+
+func (s *swappableTunDevice) Name() (string, error) {
+	return s.getInner().Name()
+}
+
+func (s *swappableTunDevice) Events() <-chan tun.Event { return s.events }
+
+func (s *swappableTunDevice) Close() error {
+	select {
+	case <-s.closed:
+		return nil
+	default:
+		close(s.closed)
+	}
+	return s.getInner().Close()
+}
+
+// swap replaces the inner tun device atomically. Closes the old inner (which
+// unblocks any goroutine stuck in nullTunDevice.Read). The read loop in
+// swappableTunDevice.Read will detect the change and retry with the new device.
+func (s *swappableTunDevice) swap(newInner tun.Device) {
+	old := s.inner.Swap(newInner).(tun.Device)
+	old.Close() // Unblocks any Read() call stuck on the old (null) tun
+}
+
+// nullTunDevice implements tun.Device by discarding all writes and blocking
+// reads until closed. Used as the initial inner device for probes.
+type nullTunDevice struct {
+	closed chan struct{}
+	mtu    int
+}
+
+func newNullTunDevice(mtu int) *nullTunDevice {
+	return &nullTunDevice{
+		closed: make(chan struct{}),
+		mtu:    mtu,
+	}
+}
+
+func (t *nullTunDevice) File() *os.File            { return nil }
+func (t *nullTunDevice) Flush() error              { return nil }
+func (t *nullTunDevice) MTU() (int, error)         { return t.mtu, nil }
+func (t *nullTunDevice) Name() (string, error)     { return "probe0", nil }
+func (t *nullTunDevice) Events() <-chan tun.Event   { return make(chan tun.Event) }
+
+func (t *nullTunDevice) Read(data []byte, offset int) (int, error) {
+	// Block until closed — no packets to deliver from a null tun.
+	<-t.closed
+	return 0, os.ErrClosed
+}
+
+func (t *nullTunDevice) Write(data []byte, offset int) (int, error) {
+	// Discard decrypted packets — they have nowhere to go.
+	return len(data) - offset, nil
+}
+
+func (t *nullTunDevice) Close() error {
+	select {
+	case <-t.closed:
+	default:
+		close(t.closed)
+	}
+	return nil
+}
+
+// probeHandle stores a background probe's WireGuard device and its swappable tun.
+type probeHandle struct {
+	*device.Device
+	*device.Logger
+	tunDev *swappableTunDevice
+}
+
+var probeHandles = make(map[int32]probeHandle)
+
+//export wgProbeOn
+func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
+	logger := &device.Logger{
+		Verbosef: CLogger(0).Printf,
+		Errorf:   CLogger(1).Printf,
+	}
+
+	nullTun := newNullTunDevice(1420)
+	swappable := newSwappableTunDevice(nullTun)
+	dev := device.NewDevice(swappable, conn.NewStdNetBind(), logger)
+
+	// Build UAPI config, injecting persistent_keepalive if requested.
+	config := C.GoString(settings)
+	if keepaliveOverride > 0 {
+		config = injectKeepalive(config, int(keepaliveOverride))
+	}
+
+	err := dev.IpcSet(config)
+	if err != nil {
+		logger.Errorf("Probe: unable to set IPC settings: %v", err)
+		dev.Close()
+		return -1
+	}
+
+	dev.Up()
+	logger.Verbosef("Probe: device started")
+
+	var i int32
+	for i = 0; i < math.MaxInt32; i++ {
+		if _, exists := probeHandles[i]; !exists {
+			break
+		}
+	}
+	if i == math.MaxInt32 {
+		dev.Close()
+		return -1
+	}
+	probeHandles[i] = probeHandle{dev, logger, swappable}
+	return i
+}
+
+//export wgProbeOff
+func wgProbeOff(handle int32) {
+	h, ok := probeHandles[handle]
+	if !ok {
+		return
+	}
+	delete(probeHandles, handle)
+	h.Close()
+}
+
+//export wgProbeGetConfig
+func wgProbeGetConfig(handle int32) *C.char {
+	h, ok := probeHandles[handle]
+	if !ok {
+		return nil
+	}
+	settings, err := h.IpcGet()
+	if err != nil {
+		return nil
+	}
+	return C.CString(settings)
+}
+
+//export wgProbeSetConfig
+func wgProbeSetConfig(handle int32, settings *C.char) int64 {
+	h, ok := probeHandles[handle]
+	if !ok {
+		return 0
+	}
+	err := h.IpcSet(C.GoString(settings))
+	if err != nil {
+		h.Errorf("Probe: unable to set IPC settings: %v", err)
+		if ipcErr, ok := err.(*device.IPCError); ok {
+			return ipcErr.ErrorCode()
+		}
+		return -1
+	}
+	return 0
+}
+
+//export wgProbeBumpSockets
+func wgProbeBumpSockets(handle int32) {
+	h, ok := probeHandles[handle]
+	if !ok {
+		return
+	}
+	go func() {
+		for i := 0; i < 10; i++ {
+			err := h.BindUpdate()
+			if err == nil {
+				h.SendKeepalivesToPeersWithCurrentKeypair()
+				return
+			}
+			h.Errorf("Probe: unable to update bind, try %d: %v", i+1, err)
+			time.Sleep(time.Second / 2)
+		}
+		h.Errorf("Probe: gave up trying to update bind")
+	}()
+}
+
+//export wgProbePromote
+func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
+	h, ok := probeHandles[probeHandleID]
+	if !ok {
+		return -1
+	}
+
+	// Create a real tun device from the file descriptor.
+	dupTunFd, err := unix.Dup(int(tunFd))
+	if err != nil {
+		h.Errorf("Probe promote: unable to dup tun fd: %v", err)
+		return -1
+	}
+	if err = unix.SetNonblock(dupTunFd, true); err != nil {
+		h.Errorf("Probe promote: unable to set tun fd non-blocking: %v", err)
+		unix.Close(dupTunFd)
+		return -1
+	}
+	realTun, err := tun.CreateTUNFromFile(os.NewFile(uintptr(dupTunFd), "/dev/tun"), 0)
+	if err != nil {
+		h.Errorf("Probe promote: unable to create tun device: %v", err)
+		unix.Close(dupTunFd)
+		return -1
+	}
+
+	// Swap the null tun for the real tun. This unblocks the read goroutine
+	// which will start processing real packets with the existing Noise session.
+	h.tunDev.swap(realTun)
+	h.Verbosef("Probe promote: swapped null tun for real utun — session preserved")
+
+	// Remove from probeHandles and add to tunnelHandles.
+	delete(probeHandles, probeHandleID)
+
+	var i int32
+	for i = 0; i < math.MaxInt32; i++ {
+		if _, exists := tunnelHandles[i]; !exists {
+			break
+		}
+	}
+	if i == math.MaxInt32 {
+		h.Errorf("Probe promote: no free tunnel handle slot")
+		h.Close()
+		return -1
+	}
+
+	tunnelHandles[i] = tunnelHandle{h.Device, h.Logger}
+	h.Verbosef("Probe promote: probe %d → tunnel %d", probeHandleID, i)
+	return i
+}
+
+// injectKeepalive ensures every peer section has a persistent_keepalive_interval.
+// If a peer already has one, it is left unchanged. The override value is in seconds.
+func injectKeepalive(uapi string, seconds int) string {
+	var result strings.Builder
+	inPeer := false
+	hasKeepalive := false
+
+	for _, line := range strings.Split(uapi, "\n") {
+		if line == "public_key=" || strings.HasPrefix(line, "public_key=") && len(line) > len("public_key=") {
+			// Flush keepalive for previous peer if needed
+			if inPeer && !hasKeepalive {
+				result.WriteString(fmt.Sprintf("persistent_keepalive_interval=%d\n", seconds))
+			}
+			inPeer = true
+			hasKeepalive = false
+		}
+		if strings.HasPrefix(line, "persistent_keepalive_interval=") {
+			hasKeepalive = true
+		}
+		if line != "" {
+			result.WriteString(line)
+			result.WriteByte('\n')
+		}
+	}
+	// Flush last peer
+	if inPeer && !hasKeepalive {
+		result.WriteString(fmt.Sprintf("persistent_keepalive_interval=%d\n", seconds))
+	}
+	return result.String()
 }
 
 // ========== Tunnel-in-Tunnel (TiT) Support ==========

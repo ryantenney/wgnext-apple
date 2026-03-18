@@ -33,6 +33,10 @@ WGnext originally used handshake-based detection, monitoring `last_handshake_tim
 
 Traffic-based detection doesn't care about keepalive settings and only triggers when there's actual evidence of a broken connection.
 
+:::tip
+If your tunnels don't have `persistent_keepalive` configured, idle tunnels won't generate any traffic — so the health monitor can't detect a broken connection until something tries to send data. You can enable **Override Persistent Keepalive** in the failover group settings to ensure keepalive packets are always sent, making health detection reliable even during idle periods. See [Failover Configuration](/failover/configuration/) for details.
+:::
+
 ## Anti-flap protection
 
 To prevent rapid cycling between tunnels (which can happen when all tunnels are experiencing intermittent issues), WGnext includes several safety mechanisms:
@@ -45,17 +49,25 @@ To prevent rapid cycling between tunnels (which can happen when all tunnels are 
 
 ## Failback probing
 
-When running on a fallback tunnel with `autoFailback` enabled, the monitor periodically probes the primary:
+When running on a fallback tunnel with `autoFailback` enabled, the monitor periodically probes the primary to check if it has recovered. The probe interval is configurable via `failbackProbeInterval` (default: 300 seconds).
+
+### Background probes (default)
+
+By default, failback probes run a **separate background WireGuard device** that tests the primary without disrupting your active connection. If the primary has recovered, the probe is promoted to become the active tunnel — preserving its existing WireGuard session with zero handshake delay.
+
+See [Background Probes & Hot Spare](/failover/background-probes/) for the full details.
+
+### Legacy probes
+
+If background probes are disabled (or fail to start), the monitor falls back to the legacy approach:
 
 1. Switch to primary config via `adapter.update()`
 2. Wait up to 15 seconds for a WireGuard handshake
 3. Check `last_handshake_time` — if recent, stay on primary
 4. Otherwise, revert to the fallback config
 
-The probe interval is configurable via `failbackProbeInterval` (default: 300 seconds).
-
 :::caution
-Failback probes cause a brief (~15 second) traffic disruption while testing the primary. This is an intentional tradeoff — the faster primary connection may have recovered.
+Legacy failback probes cause a brief (~15 second) traffic disruption while testing the primary. Background probes (enabled by default) avoid this disruption entirely.
 :::
 
 ### Network-triggered probing

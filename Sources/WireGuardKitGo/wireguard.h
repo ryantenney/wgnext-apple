@@ -33,4 +33,17 @@ extern int64_t wgSetInnerConfigTiT(int32_t handle, const char *settings);
 extern void    wgBumpSocketsTiT(int32_t handle);
 extern void    wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(int32_t handle);
 
+// Background probe: lightweight WireGuard device with null tun and real UDP sockets.
+// Used for non-disruptive failback probing and hot spare validation.
+// keepalive_override: if > 0, injects persistent_keepalive_interval for all peers (seconds).
+extern int32_t wgProbeOn(const char *settings, int32_t keepalive_override);
+extern void    wgProbeOff(int32_t handle);
+extern char   *wgProbeGetConfig(int32_t handle);
+extern int64_t wgProbeSetConfig(int32_t handle, const char *settings);
+extern void    wgProbeBumpSockets(int32_t handle);
+// Promote a probe to a full tunnel by swapping in a real utun fd.
+// Preserves the existing WireGuard session (no re-handshake).
+// Returns a tunnel handle (for use with wgTurnOff/wgSetConfig/etc), or -1 on failure.
+extern int32_t wgProbePromote(int32_t probe_handle, int32_t tun_fd);
+
 #endif

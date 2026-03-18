@@ -24,6 +24,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
     private var healthCheckInterval: TimeInterval
     private var failbackProbeInterval: TimeInterval
     private var autoFailback: Bool
+    private var persistentKeepaliveOverride: UInt16?
 
     // On-demand activation
     private var onDemandViewModel: ActivateOnDemandViewModel
@@ -46,6 +47,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case healthCheckInterval
         case failbackProbeInterval
         case autoFailback
+        case persistentKeepaliveToggle
+        case persistentKeepaliveValue
     }
 
     init(tunnelsManager: TunnelsManager, groupTunnel: TunnelContainer? = nil) {
@@ -67,6 +70,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
             self.healthCheckInterval = settings.healthCheckInterval
             self.failbackProbeInterval = settings.failbackProbeInterval
             self.autoFailback = settings.autoFailback
+            self.persistentKeepaliveOverride = settings.persistentKeepaliveOverride
 
             self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: groupTunnel)
         } else {
@@ -76,6 +80,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
             self.healthCheckInterval = 10
             self.failbackProbeInterval = 300
             self.autoFailback = true
+            self.persistentKeepaliveOverride = nil
             self.onDemandViewModel = ActivateOnDemandViewModel(from: OnDemandActivation())
         }
 
@@ -125,7 +130,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 trafficTimeout: self.trafficTimeout,
                 healthCheckInterval: self.healthCheckInterval,
                 failbackProbeInterval: self.failbackProbeInterval,
-                autoFailback: self.autoFailback
+                autoFailback: self.autoFailback,
+                persistentKeepaliveOverride: self.persistentKeepaliveOverride
             )
             self.onDemandViewModel.fixSSIDOption()
             let onDemandActivation = self.onDemandViewModel.toOnDemandActivation()
@@ -196,7 +202,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .addTunnel:
             return 1
         case .settings:
-            return SettingsRow.allCases.count
+            return persistentKeepaliveOverride != nil ? SettingsRow.allCases.count : SettingsRow.allCases.count - 1
         case .onDemand:
             return onDemandViewModel.isWiFiInterfaceEnabled ? 3 : 2
         case .delete:
@@ -292,6 +298,28 @@ class FailoverGroupEditTableViewController: UITableViewController {
                     self?.autoFailback = isOn
                 }
                 return cell
+            case .persistentKeepaliveToggle:
+                let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+                cell.message = "Override Persistent Keepalive"
+                cell.isOn = persistentKeepaliveOverride != nil
+                cell.onSwitchToggled = { [weak self] isOn in
+                    guard let self = self else { return }
+                    let hadOverride = self.persistentKeepaliveOverride != nil
+                    self.persistentKeepaliveOverride = isOn ? 25 : nil
+                    let valueIndexPath = IndexPath(row: SettingsRow.persistentKeepaliveValue.rawValue, section: Section.settings.rawValue)
+                    if isOn && !hadOverride {
+                        tableView.insertRows(at: [valueIndexPath], with: .fade)
+                    } else if !isOn && hadOverride {
+                        tableView.deleteRows(at: [valueIndexPath], with: .fade)
+                    }
+                }
+                return cell
+            case .persistentKeepaliveValue:
+                let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+                cell.textLabel?.text = "Keepalive Interval"
+                cell.detailTextLabel?.text = "\(persistentKeepaliveOverride ?? 25)s"
+                cell.accessoryType = .disclosureIndicator
+                return cell
             }
 
         case .onDemand:
@@ -343,7 +371,11 @@ class FailoverGroupEditTableViewController: UITableViewController {
         if sectionType == .addTunnel {
             presentTunnelPicker()
         } else if sectionType == .settings {
-            guard let row = SettingsRow(rawValue: indexPath.row), row != .autoFailback else { return }
+            guard let row = SettingsRow(rawValue: indexPath.row), row != .autoFailback, row != .persistentKeepaliveToggle else { return }
+            if row == .persistentKeepaliveValue {
+                presentKeepaliveEditor()
+                return
+            }
             presentValueEditor(for: row)
         } else if sectionType == .onDemand && indexPath.row == 2 {
             let ssidOptionVC = SSIDOptionEditTableViewController(option: onDemandViewModel.ssidOption, ssids: onDemandViewModel.selectedSSIDs)
@@ -452,7 +484,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .failbackProbeInterval:
             title = "Failback Probe Interval (seconds)"
             currentValue = Int(failbackProbeInterval)
-        case .autoFailback:
+        case .autoFailback, .persistentKeepaliveToggle, .persistentKeepaliveValue:
             return
         }
 
@@ -472,9 +504,29 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 self.healthCheckInterval = TimeInterval(value)
             case .failbackProbeInterval:
                 self.failbackProbeInterval = TimeInterval(value)
-            case .autoFailback:
+            case .autoFailback, .persistentKeepaliveToggle, .persistentKeepaliveValue:
                 break
             }
+            self.tableView.reloadSections(IndexSet(integer: Section.settings.rawValue), with: .none)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    // MARK: - Keepalive Value Editor
+
+    private func presentKeepaliveEditor() {
+        let currentValue = Int(persistentKeepaliveOverride ?? 25)
+        let alert = UIAlertController(title: "Keepalive Interval (seconds)", message: nil, preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.text = "\(currentValue)"
+            textField.keyboardType = .numberPad
+        }
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self, weak alert] _ in
+            guard let self = self,
+                  let text = alert?.textFields?.first?.text,
+                  let value = UInt16(text), value > 0 else { return }
+            self.persistentKeepaliveOverride = value
             self.tableView.reloadSections(IndexSet(integer: Section.settings.rawValue), with: .none)
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))

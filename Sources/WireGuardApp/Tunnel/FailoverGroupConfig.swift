@@ -14,6 +14,9 @@ struct FailoverGroupConfig {
     var healthCheckInterval: TimeInterval?
     var failbackProbeInterval: TimeInterval?
     var autoFailback: Bool?
+    var useBackgroundProbes: Bool?
+    var hotSpare: Bool?
+    var persistentKeepaliveOverride: UInt16?
 
     // MARK: - Parsing
 
@@ -96,6 +99,16 @@ struct FailoverGroupConfig {
                     if let val = attributes["autofailback"] {
                         self.autoFailback = val.lowercased() == "true"
                     }
+                    if let val = attributes["usebackgroundprobes"] {
+                        self.useBackgroundProbes = val.lowercased() == "true"
+                    }
+                    if let val = attributes["hotspare"] {
+                        self.hotSpare = val.lowercased() == "true"
+                    }
+                    if let val = attributes["persistentkeepaliveoverride"] {
+                        guard let v = UInt16(val) else { throw ParseError.invalidValue(key: "PersistentKeepaliveOverride", value: val) }
+                        self.persistentKeepaliveOverride = v
+                    }
 
                 case .inConnectionSection:
                     if let tunnelName = attributes["tunnel"]?.trimmingCharacters(in: .whitespacesAndNewlines), !tunnelName.isEmpty {
@@ -137,6 +150,15 @@ struct FailoverGroupConfig {
         if let autoFailback = autoFailback {
             output += "AutoFailback = \(autoFailback)\n"
         }
+        if let useBackgroundProbes = useBackgroundProbes {
+            output += "UseBackgroundProbes = \(useBackgroundProbes)\n"
+        }
+        if let hotSpare = hotSpare {
+            output += "HotSpare = \(hotSpare)\n"
+        }
+        if let persistentKeepaliveOverride = persistentKeepaliveOverride {
+            output += "PersistentKeepaliveOverride = \(persistentKeepaliveOverride)\n"
+        }
         for tunnelName in tunnelNames {
             output += "\n[Connection]\nTunnel = \(tunnelName)\n"
         }
@@ -159,6 +181,11 @@ struct FailoverGroupConfig {
         output += "HealthCheckInterval = \(Int(settings.healthCheckInterval))\n"
         output += "FailbackProbeInterval = \(Int(settings.failbackProbeInterval))\n"
         output += "AutoFailback = \(settings.autoFailback)\n"
+        output += "UseBackgroundProbes = \(settings.useBackgroundProbes)\n"
+        output += "HotSpare = \(settings.hotSpare)\n"
+        if let persistentKeepaliveOverride = settings.persistentKeepaliveOverride {
+            output += "PersistentKeepaliveOverride = \(persistentKeepaliveOverride)\n"
+        }
         for name in configNames {
             output += "\n[Connection]\nTunnel = \(name)\n"
         }

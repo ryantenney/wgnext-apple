@@ -135,14 +135,29 @@ extension TunnelsManager {
             tunnelProviderManager.localizedDescription = name
         }
 
-        // Resolve all tunnel names to wg-quick configs
+        // Build a lookup of existing stored configs so we can fall back to them
+        // when a standalone tunnel has been deleted but the group still references it.
+        let existingProto = tunnelProviderManager.protocolConfiguration as? NETunnelProviderProtocol
+        let existingProviderConfig = existingProto?.providerConfiguration ?? [:]
+        let existingNames = (existingProviderConfig["FailoverConfigNames"] as? [String]) ?? []
+        let existingConfigs = (existingProviderConfig["FailoverConfigs"] as? [String]) ?? []
+        var existingConfigByName: [String: String] = [:]
+        for (n, c) in zip(existingNames, existingConfigs) {
+            existingConfigByName[n] = c
+        }
+
+        // Resolve all tunnel names to wg-quick configs, falling back to stored config
         let configs: [(name: String, config: String)] = tunnelNames.compactMap { tunnelName in
-            guard let t = self.tunnel(named: tunnelName),
-                  let config = t.tunnelConfiguration?.asWgQuickConfig() else {
-                wg_log(.error, message: "Failover: could not load config for tunnel '\(tunnelName)'")
-                return nil
+            if let t = self.tunnel(named: tunnelName),
+               let config = t.tunnelConfiguration?.asWgQuickConfig() {
+                return (tunnelName, config)
             }
-            return (tunnelName, config)
+            if let storedConfig = existingConfigByName[tunnelName] {
+                wg_log(.verbose, message: "Failover: using stored config for tunnel '\(tunnelName)'")
+                return (tunnelName, storedConfig)
+            }
+            wg_log(.error, message: "Failover: could not load config for tunnel '\(tunnelName)'")
+            return nil
         }
 
         // Update passwordReference if primary tunnel changed

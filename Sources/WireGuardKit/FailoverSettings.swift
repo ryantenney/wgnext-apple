@@ -19,16 +19,37 @@ public struct FailoverSettings: Codable, Equatable {
     /// Whether to automatically attempt to return to higher-priority configurations.
     public var autoFailback: Bool
 
+    /// Whether to use background WireGuard probes for non-disruptive failback testing.
+    /// When true, failback probes run a separate lightweight WireGuard device that performs
+    /// a handshake without disrupting the active tunnel's traffic.
+    /// When false, falls back to the legacy swap-wait-check-revert approach.
+    public var useBackgroundProbes: Bool
+
+    /// Whether to maintain a hot spare — a continuously running background probe for the
+    /// next failover target. Provides pre-validated, near-instantaneous failover.
+    public var hotSpare: Bool
+
+    /// Optional override for persistent keepalive on all peers when tunnels are activated
+    /// within this failover group. `nil` means no override (use whatever the tunnel has configured).
+    /// A value of 0 means explicitly disable persistent keepalive.
+    public var persistentKeepaliveOverride: UInt16?
+
     public init(
         trafficTimeout: TimeInterval = 30,
         healthCheckInterval: TimeInterval = 10,
         failbackProbeInterval: TimeInterval = 300,
-        autoFailback: Bool = true
+        autoFailback: Bool = true,
+        useBackgroundProbes: Bool = true,
+        hotSpare: Bool = false,
+        persistentKeepaliveOverride: UInt16? = nil
     ) {
         self.trafficTimeout = trafficTimeout
         self.healthCheckInterval = healthCheckInterval
         self.failbackProbeInterval = failbackProbeInterval
         self.autoFailback = autoFailback
+        self.useBackgroundProbes = useBackgroundProbes
+        self.hotSpare = hotSpare
+        self.persistentKeepaliveOverride = persistentKeepaliveOverride
     }
 
     // MARK: - Migration from older settings
@@ -38,6 +59,9 @@ public struct FailoverSettings: Codable, Equatable {
         case healthCheckInterval
         case failbackProbeInterval
         case autoFailback
+        case useBackgroundProbes
+        case hotSpare
+        case persistentKeepaliveOverride
         // Legacy key
         case handshakeTimeout
     }
@@ -56,6 +80,9 @@ public struct FailoverSettings: Codable, Equatable {
         self.healthCheckInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .healthCheckInterval) ?? 10
         self.failbackProbeInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .failbackProbeInterval) ?? 300
         self.autoFailback = try container.decodeIfPresent(Bool.self, forKey: .autoFailback) ?? true
+        self.useBackgroundProbes = try container.decodeIfPresent(Bool.self, forKey: .useBackgroundProbes) ?? true
+        self.hotSpare = try container.decodeIfPresent(Bool.self, forKey: .hotSpare) ?? false
+        self.persistentKeepaliveOverride = try container.decodeIfPresent(UInt16.self, forKey: .persistentKeepaliveOverride)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -64,5 +91,8 @@ public struct FailoverSettings: Codable, Equatable {
         try container.encode(healthCheckInterval, forKey: .healthCheckInterval)
         try container.encode(failbackProbeInterval, forKey: .failbackProbeInterval)
         try container.encode(autoFailback, forKey: .autoFailback)
+        try container.encode(useBackgroundProbes, forKey: .useBackgroundProbes)
+        try container.encode(hotSpare, forKey: .hotSpare)
+        try container.encodeIfPresent(persistentKeepaliveOverride, forKey: .persistentKeepaliveOverride)
     }
 }

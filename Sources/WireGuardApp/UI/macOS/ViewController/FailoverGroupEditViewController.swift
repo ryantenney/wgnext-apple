@@ -21,6 +21,7 @@ class FailoverGroupEditViewController: NSViewController {
     private var healthCheckInterval: TimeInterval
     private var failbackProbeInterval: TimeInterval
     private var autoFailback: Bool
+    private var persistentKeepaliveOverride: UInt16?
     private var onDemandViewModel: ActivateOnDemandViewModel
 
     // UI elements
@@ -113,6 +114,25 @@ class FailoverGroupEditViewController: NSViewController {
         return view
     }()
 
+    let persistentKeepaliveCheckbox: NSButton = {
+        let checkbox = NSButton()
+        checkbox.title = "Override Persistent Keepalive"
+        checkbox.setButtonType(.switch)
+        checkbox.state = .off
+        return checkbox
+    }()
+
+    let persistentKeepaliveRow: NSView = {
+        let view = NSView()
+        return view
+    }()
+
+    let persistentKeepaliveValueRow: EditableKeyValueRow = {
+        let row = EditableKeyValueRow()
+        row.key = tr(format: "macFieldKey (%@)", "Keepalive (s)")
+        return row
+    }()
+
     let onDemandControlsRow = OnDemandControlsRow()
 
     let discardButton: NSButton = {
@@ -158,6 +178,7 @@ class FailoverGroupEditViewController: NSViewController {
             self.healthCheckInterval = settings.healthCheckInterval
             self.failbackProbeInterval = settings.failbackProbeInterval
             self.autoFailback = settings.autoFailback
+            self.persistentKeepaliveOverride = settings.persistentKeepaliveOverride
             self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: tunnel)
         } else {
             self.selectedTunnelNames = []
@@ -165,6 +186,7 @@ class FailoverGroupEditViewController: NSViewController {
             self.healthCheckInterval = 10
             self.failbackProbeInterval = 300
             self.autoFailback = true
+            self.persistentKeepaliveOverride = nil
             self.onDemandViewModel = ActivateOnDemandViewModel(from: OnDemandActivation())
         }
 
@@ -225,6 +247,30 @@ class FailoverGroupEditViewController: NSViewController {
             autoFailbackRow.bottomAnchor.constraint(equalTo: autoFailbackCheckbox.bottomAnchor)
         ])
 
+        // Persistent keepalive override row layout
+        let keepaliveKeyLabel = NSTextField()
+        keepaliveKeyLabel.stringValue = ""
+        keepaliveKeyLabel.isEditable = false
+        keepaliveKeyLabel.isSelectable = false
+        keepaliveKeyLabel.isBordered = false
+        keepaliveKeyLabel.backgroundColor = .clear
+
+        persistentKeepaliveRow.addSubview(keepaliveKeyLabel)
+        persistentKeepaliveRow.addSubview(persistentKeepaliveCheckbox)
+        keepaliveKeyLabel.translatesAutoresizingMaskIntoConstraints = false
+        persistentKeepaliveCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            keepaliveKeyLabel.leadingAnchor.constraint(equalTo: persistentKeepaliveRow.leadingAnchor),
+            keepaliveKeyLabel.widthAnchor.constraint(equalToConstant: 155),
+            persistentKeepaliveCheckbox.leadingAnchor.constraint(equalTo: keepaliveKeyLabel.trailingAnchor),
+            persistentKeepaliveCheckbox.centerYAnchor.constraint(equalTo: persistentKeepaliveRow.centerYAnchor),
+            persistentKeepaliveRow.topAnchor.constraint(equalTo: persistentKeepaliveCheckbox.topAnchor),
+            persistentKeepaliveRow.bottomAnchor.constraint(equalTo: persistentKeepaliveCheckbox.bottomAnchor)
+        ])
+
+        persistentKeepaliveCheckbox.target = self
+        persistentKeepaliveCheckbox.action = #selector(handleKeepaliveToggle)
+
         // Connections area
         let connectionsScrollView = NSScrollView()
         connectionsScrollView.hasVerticalScroller = true
@@ -264,7 +310,7 @@ class FailoverGroupEditViewController: NSViewController {
         let margin: CGFloat = 20
         let internalSpacing: CGFloat = 10
 
-        var editorViews: [NSView] = [nameRow, connectionsArea, settingsLabel, trafficTimeoutRow, healthCheckIntervalRow, failbackProbeIntervalRow, autoFailbackRow, onDemandControlsRow]
+        var editorViews: [NSView] = [nameRow, connectionsArea, settingsLabel, trafficTimeoutRow, healthCheckIntervalRow, failbackProbeIntervalRow, autoFailbackRow, persistentKeepaliveRow, persistentKeepaliveValueRow, onDemandControlsRow]
 
         let editorStackView = NSStackView(views: editorViews)
         editorStackView.orientation = .vertical
@@ -300,6 +346,9 @@ class FailoverGroupEditViewController: NSViewController {
         healthCheckIntervalRow.value = "\(Int(healthCheckInterval))"
         failbackProbeIntervalRow.value = "\(Int(failbackProbeInterval))"
         autoFailbackCheckbox.state = autoFailback ? .on : .off
+        persistentKeepaliveCheckbox.state = persistentKeepaliveOverride != nil ? .on : .off
+        persistentKeepaliveValueRow.value = "\(persistentKeepaliveOverride ?? 25)"
+        persistentKeepaliveValueRow.isHidden = persistentKeepaliveOverride == nil
     }
 
     @objc func handleSaveAction() {
@@ -327,11 +376,21 @@ class FailoverGroupEditViewController: NSViewController {
             return
         }
 
+        var keepaliveOverride: UInt16?
+        if persistentKeepaliveCheckbox.state == .on {
+            guard let keepalive = UInt16(persistentKeepaliveValueRow.value), keepalive > 0 else {
+                ErrorPresenter.showErrorAlert(title: "Invalid keepalive interval value.", message: "", from: self)
+                return
+            }
+            keepaliveOverride = keepalive
+        }
+
         let settings = FailoverSettings(
             trafficTimeout: timeout,
             healthCheckInterval: healthCheck,
             failbackProbeInterval: failbackProbe,
-            autoFailback: autoFailbackCheckbox.state == .on
+            autoFailback: autoFailbackCheckbox.state == .on,
+            persistentKeepaliveOverride: keepaliveOverride
         )
 
         onDemandControlsRow.saveToViewModel()
@@ -374,6 +433,17 @@ class FailoverGroupEditViewController: NSViewController {
                 }
             }
         }
+    }
+
+    @objc func handleKeepaliveToggle() {
+        let isOn = persistentKeepaliveCheckbox.state == .on
+        if isOn {
+            persistentKeepaliveOverride = 25
+            persistentKeepaliveValueRow.value = "25"
+        } else {
+            persistentKeepaliveOverride = nil
+        }
+        persistentKeepaliveValueRow.isHidden = !isOn
     }
 
     @objc func handleDiscardAction() {

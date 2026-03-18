@@ -8,6 +8,25 @@ import Foundation
 public protocol FailoverAdapterProtocol: AnyObject {
     func getRuntimeConfiguration(completionHandler: @escaping (String?) -> Void)
     func update(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (Error?) -> Void)
+
+    /// Start a background probe for the given tunnel configuration.
+    /// The probe establishes a WireGuard session (handshake) without routing traffic.
+    /// Returns the probe handle (>= 0) on success, or an error.
+    func startProbe(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (Int32?, Error?) -> Void)
+
+    /// Stop a running background probe.
+    func stopProbe(handle: Int32)
+
+    /// Get UAPI runtime configuration from a probe (handshake time, tx/rx stats).
+    func getProbeRuntimeConfiguration(handle: Int32, completionHandler: @escaping (String?) -> Void)
+
+    /// Rebind probe sockets after a network change.
+    func bumpProbeSockets(handle: Int32)
+
+    /// Promote a probe to become the active tunnel, preserving its WireGuard session.
+    /// Swaps the probe's null tun for the real utun fd — no re-handshake.
+    func promoteProbe(probeHandle: Int32, tunnelConfiguration: TunnelConfiguration,
+                      completionHandler: @escaping (Error?) -> Void)
 }
 
 /// Delegate protocol for receiving failover events from the health monitor.
@@ -93,6 +112,17 @@ public class ConnectionHealthMonitor {
     /// When we first noticed tx increasing without rx. `nil` when healthy or idle.
     private var txWithoutRxSince: Date?
 
+    // MARK: - Background Probe State
+
+    /// Handle for an active failback probe (non-nil while a background probe is running).
+    private var failbackProbeHandle: Int32?
+
+    /// Handle for an active hot spare probe (non-nil while a hot spare is running).
+    private var hotSpareHandle: Int32?
+
+    /// Config index being probed by the hot spare.
+    private var hotSpareConfigIndex: Int?
+
     // MARK: - Initialization
 
     public init(
@@ -128,6 +158,7 @@ public class ConnectionHealthMonitor {
             if self.settings.autoFailback {
                 self.startFailbackTimer()
             }
+            self.startHotSpareIfNeeded()
         }
     }
 
@@ -138,6 +169,8 @@ public class ConnectionHealthMonitor {
             self.healthCheckTimer = nil
             self.failbackTimer?.cancel()
             self.failbackTimer = nil
+            self.stopFailbackProbe()
+            self.stopHotSpare()
             self.logHandler(.verbose, "Failover: health monitor stopped")
         }
     }
@@ -247,6 +280,11 @@ public class ConnectionHealthMonitor {
             consecutiveCycles = 0
         }
 
+        // Try hot spare for pre-validated instant failover
+        if tryHotSpareFailover() {
+            return
+        }
+
         // Switch to next config
         let nextIndex = (activeIndex + 1) % configurations.count
         let nextName = configurations[nextIndex].name ?? "config #\(nextIndex)"
@@ -287,6 +325,9 @@ public class ConnectionHealthMonitor {
                     let name = config.name ?? "config #\(index)"
                     self.logHandler(.verbose, "Failover: switched from config #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
                     self.delegate?.healthMonitor(self, didSwitchToConfigAt: index)
+
+                    // Start hot spare for the next potential failover target
+                    self.startHotSpareIfNeeded()
                 }
             }
         }
@@ -310,10 +351,132 @@ public class ConnectionHealthMonitor {
     private func probeFailback() {
         guard isRunning, activeIndex != 0, !isProbing, let adapter = adapter else { return }
 
+        if settings.useBackgroundProbes {
+            probeFailbackBackground()
+        } else {
+            probeFailbackLegacy()
+        }
+    }
+
+    // MARK: - Background Probe Failback (non-disruptive)
+
+    /// Start a background WireGuard probe for the primary config. No traffic disruption.
+    private func probeFailbackBackground() {
+        guard let adapter = adapter else { return }
+
+        isProbing = true
+        let primaryName = configurations[0].name ?? "config #0"
+        logHandler(.verbose, "Failover: starting background probe for primary '\(primaryName)'")
+
+        adapter.startProbe(tunnelConfiguration: configurations[0]) { [weak self] (handle: Int32?, error: Error?) in
+            guard let self = self else { return }
+            self.workQueue.async {
+                guard let handle = handle else {
+                    self.logHandler(.error, "Failover: background probe failed to start: \(String(describing: error)), falling back to legacy probe")
+                    self.isProbing = false
+                    // Fall back to legacy disruptive probe
+                    self.probeFailbackLegacy()
+                    return
+                }
+
+                self.failbackProbeHandle = handle
+                // Wait for handshake to complete
+                let probeWait: TimeInterval = min(15, self.settings.trafficTimeout)
+                self.workQueue.asyncAfter(deadline: .now() + probeWait) { [weak self] in
+                    self?.evaluateFailbackProbeBackground()
+                }
+            }
+        }
+    }
+
+    /// Check the background probe's handshake. If primary recovered, promote it to active tunnel.
+    private func evaluateFailbackProbeBackground() {
+        guard let adapter = adapter, let handle = failbackProbeHandle else {
+            isProbing = false
+            return
+        }
+
+        adapter.getProbeRuntimeConfiguration(handle: handle) { [weak self] (configString: String?) in
+            guard let self = self else { return }
+            self.workQueue.async {
+                guard let configString = configString else {
+                    self.logHandler(.error, "Failover: could not read background probe config")
+                    self.stopFailbackProbe()
+                    self.isProbing = false
+                    return
+                }
+
+                let handshakeAge = Self.parseLastHandshakeAge(from: configString)
+
+                if handshakeAge < self.settings.trafficTimeout {
+                    // Primary recovered! Promote the probe — preserves the existing WireGuard session.
+                    let name = self.configurations[0].name ?? "config #0"
+                    self.logHandler(.verbose, "Failover: background probe confirmed primary '\(name)' recovered (handshake \(Int(handshakeAge))s ago). Promoting probe to active tunnel.")
+
+                    // Clear the failback handle so stopFailbackProbe doesn't kill it during promotion
+                    self.failbackProbeHandle = nil
+
+                    adapter.promoteProbe(probeHandle: handle, tunnelConfiguration: self.configurations[0]) { [weak self] (error: Error?) in
+                        guard let self = self else { return }
+                        self.workQueue.async {
+                            if let error = error {
+                                self.logHandler(.error, "Failover: failback probe promotion failed: \(error), falling back to config swap")
+                                // Fall back to a regular config swap
+                                adapter.update(tunnelConfiguration: self.configurations[0]) { [weak self] (_: Error?) in
+                                    guard let self = self else { return }
+                                    self.workQueue.async {
+                                        self.activeIndex = 0
+                                        self.lastSwitchTime = Date()
+                                        self.consecutiveCycles = 0
+                                        self.lastTxBytes = 0
+                                        self.lastRxBytes = 0
+                                        self.txWithoutRxSince = nil
+                                        self.isProbing = false
+                                        self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
+                                        self.startHotSpareIfNeeded()
+                                    }
+                                }
+                            } else {
+                                self.activeIndex = 0
+                                self.lastSwitchTime = Date()
+                                self.consecutiveCycles = 0
+                                self.lastTxBytes = 0
+                                self.lastRxBytes = 0
+                                self.txWithoutRxSince = nil
+                                self.isProbing = false
+                                self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
+                                self.startHotSpareIfNeeded()
+                            }
+                        }
+                    }
+                } else {
+                    // Primary still unhealthy — stop the probe, no disruption occurred
+                    let primaryName = self.configurations[0].name ?? "config #0"
+                    self.logHandler(.verbose, "Failover: background probe shows primary '\(primaryName)' still unhealthy (handshake \(Int(handshakeAge))s ago)")
+                    self.stopFailbackProbe()
+                    self.isProbing = false
+                }
+            }
+        }
+    }
+
+    /// Stop the failback probe if one is running.
+    private func stopFailbackProbe() {
+        if let handle = failbackProbeHandle {
+            adapter?.stopProbe(handle: handle)
+            failbackProbeHandle = nil
+        }
+    }
+
+    // MARK: - Legacy Failback (disruptive swap-wait-check-revert)
+
+    private func probeFailbackLegacy() {
+        guard let adapter = adapter else { return }
+
         isProbing = true
         let savedIndex = activeIndex
         let primaryName = configurations[0].name ?? "config #0"
-        logHandler(.verbose, "Failover: probing primary '\(primaryName)' for recovery")
+        logHandler(.verbose, "Failover: probing primary '\(primaryName)' for recovery (legacy)")
 
         // Switch to primary
         adapter.update(tunnelConfiguration: configurations[0]) { [weak self] (error: Error?) in
@@ -325,17 +488,15 @@ public class ConnectionHealthMonitor {
                     return
                 }
 
-                // Wait for a handshake to occur — switching configs triggers a handshake attempt,
-                // so handshake completion reliably proves the endpoint is reachable.
                 let probeWait: TimeInterval = min(15, self.settings.trafficTimeout)
                 self.workQueue.asyncAfter(deadline: .now() + probeWait) { [weak self] in
-                    self?.evaluateFailbackProbe(savedFallbackIndex: savedIndex)
+                    self?.evaluateFailbackProbeLegacy(savedFallbackIndex: savedIndex)
                 }
             }
         }
     }
 
-    private func evaluateFailbackProbe(savedFallbackIndex: Int) {
+    private func evaluateFailbackProbeLegacy(savedFallbackIndex: Int) {
         guard let adapter = adapter else {
             isProbing = false
             return
@@ -361,6 +522,7 @@ public class ConnectionHealthMonitor {
                     self.txWithoutRxSince = nil
                     self.isProbing = false
                     self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
+                    self.startHotSpareIfNeeded()
                 } else {
                     // Primary still unhealthy — revert
                     let fallbackName = self.configurations[savedFallbackIndex].name ?? "config #\(savedFallbackIndex)"
@@ -379,6 +541,104 @@ public class ConnectionHealthMonitor {
         }
     }
 
+    // MARK: - Hot Spare
+
+    /// Start a hot spare probe for the next failover target, if hot spare mode is enabled.
+    private func startHotSpareIfNeeded() {
+        guard settings.hotSpare, isRunning, let adapter = adapter else { return }
+
+        // Determine what to probe:
+        // - If on primary (index 0): probe fallback (index 1)
+        // - If on fallback: probe primary (index 0) — doubles as failback monitor
+        let targetIndex: Int
+        if activeIndex == 0 {
+            targetIndex = 1
+        } else {
+            targetIndex = 0
+        }
+
+        guard targetIndex < configurations.count else { return }
+
+        // Don't start if already running for this target
+        if hotSpareConfigIndex == targetIndex, hotSpareHandle != nil { return }
+
+        // Stop existing hot spare if for a different target
+        stopHotSpare()
+
+        let targetName = configurations[targetIndex].name ?? "config #\(targetIndex)"
+        logHandler(.verbose, "Failover: starting hot spare probe for '\(targetName)' (index \(targetIndex))")
+
+        adapter.startProbe(tunnelConfiguration: configurations[targetIndex]) { [weak self] (handle: Int32?, error: Error?) in
+            guard let self = self else { return }
+            self.workQueue.async {
+                if let handle = handle {
+                    self.hotSpareHandle = handle
+                    self.hotSpareConfigIndex = targetIndex
+                    self.logHandler(.verbose, "Failover: hot spare started for index \(targetIndex) (handle \(handle))")
+                } else {
+                    self.logHandler(.error, "Failover: failed to start hot spare: \(String(describing: error))")
+                }
+            }
+        }
+    }
+
+    /// Stop the hot spare probe if one is running.
+    private func stopHotSpare() {
+        if let handle = hotSpareHandle {
+            adapter?.stopProbe(handle: handle)
+            hotSpareHandle = nil
+            hotSpareConfigIndex = nil
+        }
+    }
+
+    /// Promote the hot spare to become the active tunnel, preserving its WireGuard session.
+    /// Called from evaluateHealth when the active connection is detected as unhealthy.
+    /// Returns true if we initiated hot spare promotion (caller should not also switchToConfig).
+    private func tryHotSpareFailover() -> Bool {
+        guard settings.hotSpare, let adapter = adapter,
+              let handle = hotSpareHandle, let targetIndex = hotSpareConfigIndex else {
+            return false
+        }
+
+        logHandler(.verbose, "Failover: promoting hot spare for index \(targetIndex) — session preserved, no re-handshake")
+
+        // Clear hot spare state so stopHotSpare doesn't kill it during promotion
+        let config = configurations[targetIndex]
+        hotSpareHandle = nil
+        hotSpareConfigIndex = nil
+
+        // Promote: swaps null tun → real utun inside the probe device
+        adapter.promoteProbe(probeHandle: handle, tunnelConfiguration: config) { [weak self] (error: Error?) in
+            guard let self = self else { return }
+            self.workQueue.async {
+                if let error = error {
+                    let name = config.name ?? "config #\(targetIndex)"
+                    self.logHandler(.error, "Failover: hot spare promotion failed: \(error), falling back to config swap")
+                    // Fall back to regular config swap
+                    self.switchToConfig(at: targetIndex)
+                } else {
+                    let previousIndex = self.activeIndex
+                    self.activeIndex = targetIndex
+                    self.lastSwitchTime = Date()
+                    self.consecutiveCycles += 1
+
+                    self.lastTxBytes = 0
+                    self.lastRxBytes = 0
+                    self.txWithoutRxSince = nil
+
+                    let name = config.name ?? "config #\(targetIndex)"
+                    self.logHandler(.verbose, "Failover: hot spare promoted from #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
+                    self.delegate?.healthMonitor(self, didSwitchToConfigAt: targetIndex)
+
+                    // Start a new hot spare for the next target
+                    self.startHotSpareIfNeeded()
+                }
+            }
+        }
+
+        return true
+    }
+
     // MARK: - State Snapshot
 
     /// Returns a snapshot of the health monitor's current state for IPC reporting.
@@ -391,6 +651,13 @@ public class ConnectionHealthMonitor {
             }
             if self.isProbing {
                 state["isProbing"] = true
+            }
+            if self.failbackProbeHandle != nil {
+                state["backgroundProbeActive"] = true
+            }
+            if let hotSpareIndex = self.hotSpareConfigIndex {
+                state["hotSpareConfigIndex"] = hotSpareIndex
+                state["hotSpareActive"] = self.hotSpareHandle != nil
             }
             if self.lastSwitchTime != .distantPast {
                 state["lastSwitchTime"] = self.lastSwitchTime.timeIntervalSince1970

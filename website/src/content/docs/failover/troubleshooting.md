@@ -26,10 +26,13 @@ If the monitor has cycled through all configurations 3 times, it enters a 5-minu
 Check that auto failback is enabled in the failover group settings.
 
 ### Primary still unhealthy
-Failback probes test the primary by briefly switching to it and checking for a handshake. If the primary still can't complete a handshake within 15 seconds, it's considered still down and the monitor stays on the fallback.
+Failback probes test the primary by starting a background WireGuard device (or, with legacy probes, briefly switching to the primary config). If the primary still can't complete a handshake within 15 seconds, it's considered still down and the monitor stays on the fallback.
 
 ### Probe interval
 The default probe interval is 5 minutes. After a failover event, it may take up to 5 minutes for the first failback probe.
+
+### Background probe failed to start
+If the background probe can't bind a UDP socket, WGnext automatically falls back to the legacy (disruptive) probe approach. Check the device log for "background probe failed to start" messages. This is rare but can happen with unusual network configurations.
 
 ## False positives
 
@@ -52,6 +55,8 @@ Tap on a failover group in the tunnel list to see the detail view with live stat
 - **Last Handshake**: Time since the last successful WireGuard handshake
 - **Failover Count**: Number of times the active config has changed
 - **Health Status**: Only shown when unhealthy — displays as "Unhealthy (tx without rx for Xs)"
+- **Failback Probe**: Shown when a background probe is testing the primary ("Background probe running...")
+- **Hot Spare**: Shown when a hot spare is active ("Monitoring *config-name*")
 
 The detail view polls the extension every 2 seconds for updated stats.
 
@@ -60,11 +65,13 @@ The detail view polls the extension every 2 seconds for updated stats.
 | Scenario | Expected Behavior |
 |----------|-------------------|
 | Primary server reboots (2 min downtime) | Failover within ~40s, failback within 5 min of recovery |
+| Primary reboots (hot spare enabled) | Hot spare promoted instantly (~40s detection + ~0s handshake) |
 | All servers down | Cycles through all configs, enters 5-min cooldown after 3 cycles |
 | Flaky Wi-Fi (intermittent drops <30s) | No failover — within timeout tolerance |
 | ISP outage (extended downtime) | Failover to fallback, stays there until primary probed successfully |
 | Device sleeps/wakes | Health monitoring pauses during sleep, resumes on wake |
 | App killed while on fallback | Extension keeps running. State queried via IPC when app reopens |
+| Failback probe with background probes | No traffic disruption — probe runs alongside active tunnel |
 
 ## Debug testing
 

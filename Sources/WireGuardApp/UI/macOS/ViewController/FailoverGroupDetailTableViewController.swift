@@ -46,6 +46,7 @@ class FailoverGroupDetailTableViewController: NSViewController {
         case lastFailover
         case healthStatus
         case failbackProbe
+        case hotSpare
 
         var localizedUIString: String {
             switch self {
@@ -57,6 +58,7 @@ class FailoverGroupDetailTableViewController: NSViewController {
             case .lastFailover: return "Last Failover"
             case .healthStatus: return "Health"
             case .failbackProbe: return "Failback Probe"
+            case .hotSpare: return "Hot Spare"
             }
         }
     }
@@ -338,6 +340,9 @@ class FailoverGroupDetailTableViewController: NSViewController {
         if let probing = state["isProbing"] as? Bool, probing {
             fields.append(.failbackProbe)
         }
+        if let hotSpareActive = state["hotSpareActive"] as? Bool, hotSpareActive {
+            fields.append(.hotSpare)
+        }
         return fields
     }
 
@@ -409,7 +414,16 @@ class FailoverGroupDetailTableViewController: NSViewController {
             }
             return "Healthy"
         case .failbackProbe:
+            if let bgProbe = state["backgroundProbeActive"] as? Bool, bgProbe {
+                return "Background probe running..."
+            }
             return "Probing primary..."
+        case .hotSpare:
+            if let index = state["hotSpareConfigIndex"] as? Int {
+                let name = index < tunnelNames.count ? tunnelNames[index] : "config #\(index)"
+                return "Monitoring \(name)"
+            }
+            return "Active"
         }
     }
 

@@ -162,6 +162,9 @@ public class WireGuardAdapter {
         // Cancel network monitor
         networkMonitor?.cancel()
 
+        // Stop all background probes
+        stopAllProbes()
+
         // Shutdown the tunnel
         switch self.state {
         case .started(let handle, _):
@@ -334,6 +337,7 @@ public class WireGuardAdapter {
             self.networkMonitor = nil
             self.titOuterSettingsGenerator = nil
             self.titOuterIfaceIP = nil
+            self.stopAllProbes()
 
             self.state = .stopped
 
@@ -400,6 +404,145 @@ public class WireGuardAdapter {
                 fatalError()
             }
         }
+    }
+
+    // MARK: - Background Probe methods
+
+    /// Active background probe handles, keyed by an arbitrary caller-chosen ID.
+    private var probeHandles: [Int32: Bool] = [:]
+
+    /// Start a background probe for the given tunnel configuration.
+    /// The probe creates a lightweight WireGuard device with real UDP sockets and a null tun.
+    /// It performs a full Noise IK handshake without routing any user traffic.
+    public func startProbe(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (Int32?, Error?) -> Void) {
+        workQueue.async {
+            do {
+                let settingsGenerator = try self.makeSettingsGenerator(with: tunnelConfiguration)
+                let (wgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
+                self.logEndpointResolutionResults(resolutionResults)
+
+                let handle = wgProbeOn(wgConfig, 25) // 25s keepalive override
+                if handle < 0 {
+                    completionHandler(nil, WireGuardAdapterError.startWireGuardBackend(handle))
+                    return
+                }
+                self.probeHandles[handle] = true
+                self.logHandler(.verbose, "Probe: started with handle \(handle)")
+                completionHandler(handle, nil)
+            } catch let error as WireGuardAdapterError {
+                completionHandler(nil, error)
+            } catch {
+                fatalError()
+            }
+        }
+    }
+
+    /// Stop a running background probe and release its resources.
+    public func stopProbe(handle: Int32) {
+        workQueue.async {
+            guard self.probeHandles.removeValue(forKey: handle) != nil else { return }
+            wgProbeOff(handle)
+            self.logHandler(.verbose, "Probe: stopped handle \(handle)")
+        }
+    }
+
+    /// Get UAPI runtime configuration from a background probe.
+    /// Returns the config string containing last_handshake_time_sec, tx_bytes, rx_bytes, etc.
+    public func getProbeRuntimeConfiguration(handle: Int32, completionHandler: @escaping (String?) -> Void) {
+        workQueue.async {
+            guard self.probeHandles[handle] != nil else {
+                completionHandler(nil)
+                return
+            }
+            if let settings = wgProbeGetConfig(handle) {
+                completionHandler(String(cString: settings))
+                free(settings)
+            } else {
+                completionHandler(nil)
+            }
+        }
+    }
+
+    /// Rebind probe sockets after a network path change.
+    public func bumpProbeSockets(handle: Int32) {
+        workQueue.async {
+            guard self.probeHandles[handle] != nil else { return }
+            wgProbeBumpSockets(handle)
+        }
+    }
+
+    /// Promote a background probe to become the active tunnel.
+    /// Swaps the probe's null tun for the real utun fd, preserving the existing WireGuard
+    /// session (no re-handshake). The old active tunnel is torn down.
+    /// - Parameters:
+    ///   - probeHandle: handle returned by startProbe()
+    ///   - tunnelConfiguration: the configuration that the probe was started with
+    ///   - completionHandler: called with nil on success, or an error
+    public func promoteProbe(probeHandle: Int32, tunnelConfiguration: TunnelConfiguration,
+                             completionHandler: @escaping (Error?) -> Void) {
+        workQueue.async {
+            // Must have a running tunnel to promote into
+            guard case .started(let oldHandle, _) = self.state else {
+                if case .startedTiT = self.state {
+                    // TiT promotion not supported yet
+                    self.logHandler(.error, "Probe promote: not supported for TiT tunnels")
+                    completionHandler(WireGuardAdapterError.invalidState)
+                    return
+                }
+                completionHandler(WireGuardAdapterError.invalidState)
+                return
+            }
+
+            guard self.probeHandles.removeValue(forKey: probeHandle) != nil else {
+                self.logHandler(.error, "Probe promote: unknown probe handle \(probeHandle)")
+                completionHandler(WireGuardAdapterError.invalidState)
+                return
+            }
+
+            self.packetTunnelProvider?.reasserting = true
+            defer { self.packetTunnelProvider?.reasserting = false }
+
+            do {
+                let settingsGenerator = try self.makeSettingsGenerator(with: tunnelConfiguration)
+                try self.setNetworkSettings(settingsGenerator.generateNetworkSettings())
+
+                guard let tunnelFileDescriptor = self.tunnelFileDescriptor else {
+                    throw WireGuardAdapterError.cannotLocateTunnelFileDescriptor
+                }
+
+                // Promote: swaps null tun → real utun inside the probe's device,
+                // moves it to tunnelHandles, and returns the new tunnel handle.
+                let newHandle = wgProbePromote(probeHandle, tunnelFileDescriptor)
+                if newHandle < 0 {
+                    throw WireGuardAdapterError.startWireGuardBackend(newHandle)
+                }
+
+                // Tear down the old tunnel device.
+                wgTurnOff(oldHandle)
+
+                #if os(iOS)
+                wgDisableSomeRoamingForBrokenMobileSemantics(newHandle)
+                #endif
+
+                self.state = .started(newHandle, settingsGenerator)
+                self.logHandler(.verbose, "Probe promote: probe \(probeHandle) → tunnel \(newHandle), session preserved")
+                completionHandler(nil)
+            } catch let error as WireGuardAdapterError {
+                // Probe is gone from probeHandles but promote failed — clean it up
+                wgProbeOff(probeHandle)
+                completionHandler(error)
+            } catch {
+                fatalError()
+            }
+        }
+    }
+
+    /// Stop all running probes. Called during tunnel shutdown.
+    private func stopAllProbes() {
+        for handle in probeHandles.keys {
+            wgProbeOff(handle)
+        }
+        probeHandles.removeAll()
     }
 
     // MARK: - Private methods
@@ -545,6 +688,10 @@ public class WireGuardAdapter {
         default:
             break
         }
+        // Bump all probe sockets on network change
+        for probeHandle in self.probeHandles.keys {
+            wgProbeBumpSockets(probeHandle)
+        }
         #elseif os(iOS)
         switch self.state {
         case .started(let handle, let settingsGenerator):
@@ -555,11 +702,17 @@ public class WireGuardAdapter {
                 wgSetConfig(handle, wgConfig)
                 wgDisableSomeRoamingForBrokenMobileSemantics(handle)
                 wgBumpSockets(handle)
+                // Bump all probe sockets on network change
+                for probeHandle in self.probeHandles.keys {
+                    wgProbeBumpSockets(probeHandle)
+                }
             } else {
                 self.logHandler(.verbose, "Connectivity offline, pausing backend.")
 
                 self.state = .temporaryShutdown(settingsGenerator)
                 wgTurnOff(handle)
+                // Stop all probes when going offline — they'll be restarted by the health monitor
+                self.stopAllProbes()
             }
 
         case .temporaryShutdown(let settingsGenerator):

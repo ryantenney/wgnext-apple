@@ -104,6 +104,7 @@ Wraps `NETunnelProviderManager` with observable `status` and `name` properties. 
 ### Naming
 - Tunnel providers: `NETunnelProviderManager` (system), `TunnelContainer` (app wrapper)
 - Go bridge functions: `wgTurnOn`, `wgTurnOff`, `wgSetConfig`, `wgGetConfig`, `wgBumpSockets`
+- Go bridge probe functions: `wgProbeOn`, `wgProbeOff`, `wgProbeGetConfig`, `wgProbePromote`
 - UAPI config: key=value newline-delimited format for communicating with wireguard-go
 
 ## Connection Failover
@@ -111,8 +112,8 @@ Wraps `NETunnelProviderManager` with observable `status` and `name` properties. 
 Failover groups allow ordered lists of tunnel configurations with automatic failover. See `DESIGN-connection-failover.md` for full documentation.
 
 ### Key Files
-- `Sources/WireGuardKit/ConnectionHealthMonitor.swift` — failover engine (traffic monitoring, config switching, failback probing)
-- `Sources/WireGuardKit/FailoverSettings.swift` — settings model
+- `Sources/WireGuardKit/ConnectionHealthMonitor.swift` — failover engine (traffic monitoring, config switching, background probes, hot spare)
+- `Sources/WireGuardKit/FailoverSettings.swift` — settings model (`useBackgroundProbes`, `hotSpare`)
 - `Sources/WireGuardApp/Tunnel/FailoverGroup.swift` — data model and persistence
 - `Sources/WireGuardApp/Tunnel/TunnelsManager+Failover.swift` — app-level CRUD, IPC, config sync
 
@@ -122,6 +123,14 @@ Failover groups allow ordered lists of tunnel configurations with automatic fail
 - `WireGuardAdapter.update()` hot-swaps the entire tunnel config (keys, peers, endpoint) without tearing down the VPN
 - IPC message type 0 = UAPI config, type 1 = failover state + runtime stats
 - `TunnelsManager` maintains separate `tunnels` and `failoverGroupTunnels` arrays
+
+### Background Probes & Hot Spare
+See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
+
+- **Background probes** (`useBackgroundProbes: true`, default): Failback testing runs a separate lightweight WireGuard device with a null tun — no traffic disruption. Only swaps to primary after confirming it's healthy.
+- **Hot spare** (`hotSpare: true`, opt-in): Continuously running background probe for the next failover target. On failover, `promoteProbe()` swaps the null tun for the real utun fd inside the running device, preserving the existing Noise session — zero handshake delay.
+- **`swappableTunDevice`** (Go): Wraps inner `tun.Device` with `atomic.Value` for lock-free reads. Only used for failover groups, not regular tunnels. Per-packet overhead is effectively zero (~1-2ns atomic load).
+- **Fallback chain**: If probe start fails → legacy disruptive probe. If promotion fails → `adapter.update()` (re-handshake).
 
 ### Debug Testing
 Build with `FAILOVER_TESTING` flag (`fastlane ios device_failover`) to get Force Failover/Failback buttons in the detail view. All debug code is `#if FAILOVER_TESTING` gated.

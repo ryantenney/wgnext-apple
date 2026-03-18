@@ -29,7 +29,8 @@ This page explains the technical architecture behind WGnext's failover system.
 │         ├─ Polls tx_bytes/rx_bytes every 10s     │
 │         ├─ Detects unhealthy connections         │
 │         ├─ Calls adapter.update() to switch      │
-│         └─ Probes primary for failback           │
+│         ├─ Probes primary for failback           │
+│         └─ Manages hot spare probes              │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -45,6 +46,8 @@ The swap process:
 4. Set `packetTunnelProvider.reasserting = false`
 
 From the OS perspective, the VPN stays "connected" — it briefly enters "reasserting" state. No tunnel teardown, no connectivity gap visible to apps.
+
+With [hot spare mode](/failover/background-probes/) enabled, failover can also use `promoteProbe()` instead of `update()`. This promotes a pre-established background WireGuard session, preserving the existing Noise handshake and eliminating the re-handshake RTT entirely.
 
 ## Why this runs in the Network Extension
 

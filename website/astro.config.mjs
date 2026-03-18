@@ -45,6 +45,7 @@ export default defineConfig({
           items: [
             { label: 'How Failover Works', link: '/failover/how-it-works/' },
             { label: 'Health Detection', link: '/failover/health-detection/' },
+            { label: 'Background Probes & Hot Spare', link: '/failover/background-probes/' },
             { label: 'Configuration', link: '/failover/configuration/' },
             { label: 'Troubleshooting', link: '/failover/troubleshooting/' },
           ],

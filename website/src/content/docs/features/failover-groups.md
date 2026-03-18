@@ -34,6 +34,7 @@ When active, the detail view shows:
 - Last handshake time
 - Failover count and last failover time (if any switches have occurred)
 - Current health status
+- Hot spare status (when [hot spare mode](/failover/background-probes/) is enabled)
 
 ## Use cases
 

@@ -7,6 +7,7 @@ import Foundation
 struct ZipImportResult {
     var tunnelConfigurations: [TunnelConfiguration?]
     var failoverGroups: [FailoverGroupConfig]
+    var tunnelInTunnelGroups: [TunnelInTunnelGroupConfig]
 }
 
 class ZipImporter {
@@ -35,16 +36,23 @@ class ZipImporter {
                 fatalError()
             }
 
-            // Separate failover group configs from regular tunnel configs
+            // Separate failover group and tunnel-in-tunnel configs from regular tunnel configs
             let failoverGroupSuffix = ".failovergroup"
+            let tunnelInTunnelSuffix = ".tunnelintunnel"
             var tunnelFiles = [(fileBaseName: String, contents: Data)]()
             var failoverGroupFiles = [(name: String, contents: Data)]()
+            var tunnelInTunnelFiles = [(name: String, contents: Data)]()
 
             for file in unarchivedFiles {
                 if file.fileBaseName.lowercased().hasSuffix(failoverGroupSuffix) {
                     let groupName = String(file.fileBaseName.dropLast(failoverGroupSuffix.count))
                     if !groupName.isEmpty {
                         failoverGroupFiles.append((name: groupName, contents: file.contents))
+                    }
+                } else if file.fileBaseName.lowercased().hasSuffix(tunnelInTunnelSuffix) {
+                    let groupName = String(file.fileBaseName.dropLast(tunnelInTunnelSuffix.count))
+                    if !groupName.isEmpty {
+                        tunnelInTunnelFiles.append((name: groupName, contents: file.contents))
                     }
                 } else {
                     tunnelFiles.append(file)
@@ -71,7 +79,15 @@ class ZipImporter {
                 failoverGroups.append(groupConfig)
             }
 
-            let result = ZipImportResult(tunnelConfigurations: configs, failoverGroups: failoverGroups)
+            // Parse tunnel-in-tunnel group configs
+            var tunnelInTunnelGroups = [TunnelInTunnelGroupConfig]()
+            for file in tunnelInTunnelFiles {
+                guard let fileContents = String(data: file.contents, encoding: .utf8) else { continue }
+                guard let groupConfig = try? TunnelInTunnelGroupConfig(from: fileContents, called: file.name) else { continue }
+                tunnelInTunnelGroups.append(groupConfig)
+            }
+
+            let result = ZipImportResult(tunnelConfigurations: configs, failoverGroups: failoverGroups, tunnelInTunnelGroups: tunnelInTunnelGroups)
             DispatchQueue.main.async { completion(.success(result)) }
         }
     }

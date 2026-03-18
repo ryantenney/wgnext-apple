@@ -31,8 +31,33 @@ Failover groups have several configurable parameters that control health detecti
 
 - **Default**: 300 seconds (5 minutes)
 - **What it does**: How often to probe the primary tunnel when currently running on a fallback.
-- **Tradeoff**: More frequent probes mean faster recovery to the primary but cause more brief disruptions (~15 seconds each). Less frequent probes reduce disruptions but delay recovery.
-- **Recommendation**: 5 minutes is reasonable for most use cases. If your primary connection is critical and outages are typically short, consider reducing to 120 seconds.
+- **Tradeoff**: More frequent probes mean faster recovery to the primary. With [background probes](/failover/background-probes/) enabled (the default), probes are non-disruptive, so shorter intervals have minimal downside. With legacy probes, each probe causes a ~15-second disruption.
+- **Recommendation**: 5 minutes is reasonable for most use cases. With background probes enabled, you can safely reduce this to 60-120 seconds without impacting active traffic.
+
+### Background Probes
+
+- **Default**: Enabled
+- **What it does**: Uses a separate lightweight WireGuard device for failback probing instead of swapping the active tunnel config. The probe runs entirely in the background with no impact on active traffic.
+- **When to disable**: Only if you experience issues with the background probe approach (e.g., unusual network configurations that prevent binding a second UDP socket). Disabling falls back to the legacy swap-wait-check-revert approach.
+- **Recommendation**: Leave enabled.
+
+### Hot Spare
+
+- **Default**: Disabled
+- **What it does**: Maintains a continuously running background WireGuard device for the next failover target. When the active tunnel fails, the hot spare is promoted with its existing session intact — zero handshake delay.
+- **When to enable**: When you need the fastest possible failover and can tolerate the minor resource overhead of a persistent background WireGuard session (~64 bytes of keepalive traffic every 25 seconds).
+- **Tradeoff**: Slightly higher resource usage (one extra UDP socket, ~2-3 goroutines, minimal battery impact) in exchange for near-instantaneous failover.
+- **Recommendation**: Enable for always-on VPN deployments where failover speed is critical. Leave disabled for casual use.
+
+See [Background Probes & Hot Spare](/failover/background-probes/) for the full technical details.
+
+### Override Persistent Keepalive
+
+- **Default**: Disabled (no override)
+- **What it does**: When enabled, overrides the `persistent_keepalive` setting on all peers in all tunnels within the failover group. The individual tunnel configurations are not modified — the override is applied at activation time when the tunnel runs in the context of the failover group.
+- **Why use it**: Persistent keepalive generates periodic traffic that makes [health detection](/failover/health-detection/) more reliable. Without it, an idle tunnel shows no tx/rx activity, so the health monitor treats it as "idle" rather than "unhealthy" — even if the peer is actually unreachable. With keepalive enabled, the monitor sees outgoing keepalive packets with no response, triggering failover.
+- **Tradeoff**: Keepalive packets prevent NAT/firewall timeouts and improve health detection, but they consume a small amount of bandwidth (~64 bytes per interval) and prevent the WireGuard session from going fully idle.
+- **Recommendation**: Enable with the default 25-second interval if your tunnels don't already have persistent keepalive configured and you want reliable failover detection during idle periods.
 
 ## Editing settings
 
@@ -58,6 +83,9 @@ Changes take effect immediately if the group is active — the extension receive
 | Health Check Interval | 10s | 5-60s |
 | Auto Failback | Enabled | On/Off |
 | Failback Probe Interval | 300s | 60-900s |
+| Background Probes | Enabled | On/Off |
+| Hot Spare | Disabled | On/Off |
+| Override Persistent Keepalive | Disabled | On/Off + 1-65535s |
 
 ## Built-in protections
 

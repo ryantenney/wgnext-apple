@@ -15,6 +15,7 @@ enum ZipExporterError: WireGuardAppError {
 class ZipExporter {
     static func exportConfigFiles(tunnelConfigurations: [TunnelConfiguration],
                                    failoverGroups: [(name: String, config: String)] = [],
+                                   tunnelInTunnelGroups: [(name: String, config: String)] = [],
                                    to url: URL,
                                    completion: @escaping (WireGuardAppError?) -> Void) {
 
@@ -36,6 +37,11 @@ class ZipExporter {
             for group in failoverGroups {
                 if let contents = group.config.data(using: .utf8) {
                     inputsToArchiver.append((fileName: "\(group.name).failovergroup.conf", contents: contents))
+                }
+            }
+            for group in tunnelInTunnelGroups {
+                if let contents = group.config.data(using: .utf8) {
+                    inputsToArchiver.append((fileName: "\(group.name).tunnelintunnel.conf", contents: contents))
                 }
             }
             do {

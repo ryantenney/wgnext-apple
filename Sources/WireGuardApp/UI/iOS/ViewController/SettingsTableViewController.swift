@@ -120,7 +120,12 @@ class SettingsTableViewController: UITableViewController {
                 }
             }
 
-            ZipExporter.exportConfigFiles(tunnelConfigurations: tunnelConfigurations, failoverGroups: failoverGroups, to: destinationURL) { [weak self] error in
+            // Gather tunnel-in-tunnel group configs for export
+            let tunnelInTunnelGroups = TunnelInTunnelGroupManager.loadGroups().map {
+                (name: $0.name, config: TunnelInTunnelGroupConfig.configString(from: $0))
+            }
+
+            ZipExporter.exportConfigFiles(tunnelConfigurations: tunnelConfigurations, failoverGroups: failoverGroups, tunnelInTunnelGroups: tunnelInTunnelGroups, to: destinationURL) { [weak self] error in
                 if let error = error {
                     ErrorPresenter.showErrorAlert(error: error, from: self)
                     return

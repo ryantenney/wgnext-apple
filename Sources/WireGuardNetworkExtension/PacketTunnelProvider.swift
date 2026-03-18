@@ -404,14 +404,36 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let names = providerConfig?["FailoverConfigNames"] as? [String] ?? []
         failoverConfigNames = names
 
+        // Decode settings to check for persistent keepalive override
+        var keepaliveOverride: UInt16?
+        if let settingsData = providerConfig?["FailoverSettings"] as? Data,
+           let settings = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
+            keepaliveOverride = settings.persistentKeepaliveOverride
+        }
+
         failoverConfigs = configStrings.enumerated().compactMap { index, configString in
             let name = names.indices.contains(index) ? names[index] : nil
             do {
-                return try TunnelConfiguration(fromWgQuickConfig: configString, called: name)
+                let config = try TunnelConfiguration(fromWgQuickConfig: configString, called: name)
+                // Apply persistent keepalive override if configured
+                if let override = keepaliveOverride {
+                    let effectiveValue: UInt16? = override > 0 ? override : nil
+                    let modifiedPeers = config.peers.map { peer -> PeerConfiguration in
+                        var p = peer
+                        p.persistentKeepAlive = effectiveValue
+                        return p
+                    }
+                    return TunnelConfiguration(name: config.name, interface: config.interface, peers: modifiedPeers)
+                }
+                return config
             } catch {
                 wg_log(.error, message: "Failover: failed to parse config #\(index) '\(name ?? "unknown")': \(error)")
                 return nil
             }
+        }
+
+        if let override = keepaliveOverride {
+            wg_log(.info, message: "Failover: persistent keepalive override = \(override)s applied to all peers")
         }
     }
 
