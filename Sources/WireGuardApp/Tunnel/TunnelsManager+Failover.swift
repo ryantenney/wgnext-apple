@@ -186,6 +186,8 @@ extension TunnelsManager {
         tunnelProviderManager.isOnDemandEnabled = onDemandActivation.isEnabled
         tunnelProviderManager.isEnabled = true
 
+        let activeTunnel = (tunnels + failoverGroupTunnels + titGroupTunnels).first { $0.status == .active || $0.status == .activating }
+
         tunnelProviderManager.saveToPreferences { [weak self] error in
             if let error = error {
                 wg_log(.error, message: "Failover: failed to save group modification: \(error)")
@@ -193,6 +195,17 @@ extension TunnelsManager {
                 return
             }
             guard let self = self else { return }
+
+            #if os(iOS)
+            if let activeTunnel = activeTunnel, activeTunnel !== tunnel {
+                if activeTunnel.status == .inactive || activeTunnel.status == .deactivating {
+                    self.startActivation(of: activeTunnel)
+                }
+                if activeTunnel.status == .active || activeTunnel.status == .activating {
+                    activeTunnel.status = .restarting
+                }
+            }
+            #endif
 
             if isNameChanged {
                 let oldIndex = self.failoverGroupTunnels.firstIndex(of: tunnel)!

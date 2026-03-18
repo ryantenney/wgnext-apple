@@ -10,6 +10,7 @@ class ManageTunnelsRootViewController: NSViewController {
     var tunnelsListVC: TunnelsListTableViewController?
     var tunnelDetailVC: TunnelDetailTableViewController?
     var failoverGroupDetailVC: FailoverGroupDetailTableViewController?
+    var titGroupDetailVC: TunnelInTunnelDetailTableViewController?
     let tunnelDetailContainerView = NSView()
     var tunnelDetailContentVC: NSViewController?
 
@@ -79,9 +80,19 @@ class ManageTunnelsRootViewController: NSViewController {
 }
 
 extension ManageTunnelsRootViewController: TunnelsListTableViewControllerDelegate {
+    func titGroupSelected(at index: Int) {
+        tunnelDetailVC = nil
+        failoverGroupDetailVC = nil
+        let groupTunnel = tunnelsManager.titGroup(at: index)
+        let detailVC = TunnelInTunnelDetailTableViewController(tunnelsManager: tunnelsManager, tunnel: groupTunnel)
+        setTunnelDetailContentVC(detailVC)
+        self.titGroupDetailVC = detailVC
+    }
+
     func tunnelsSelected(tunnelIndices: [Int]) {
         assert(!tunnelIndices.isEmpty)
         failoverGroupDetailVC = nil
+        titGroupDetailVC = nil
         if tunnelIndices.count == 1 {
             let tunnel = tunnelsManager.tunnel(at: tunnelIndices.first!)
             if tunnel.isTunnelAvailableToUser {
@@ -109,6 +120,7 @@ extension ManageTunnelsRootViewController: TunnelsListTableViewControllerDelegat
 
     func failoverGroupSelected(at index: Int) {
         tunnelDetailVC = nil
+        titGroupDetailVC = nil
         let groupTunnel = tunnelsManager.failoverGroup(at: index)
         let detailVC = FailoverGroupDetailTableViewController(tunnelsManager: tunnelsManager, tunnel: groupTunnel)
         setTunnelDetailContentVC(detailVC)
@@ -117,6 +129,7 @@ extension ManageTunnelsRootViewController: TunnelsListTableViewControllerDelegat
 
     func tunnelsListEmpty() {
         failoverGroupDetailVC = nil
+        titGroupDetailVC = nil
         let noTunnelsVC = ButtonedDetailViewController()
         noTunnelsVC.setButtonTitle(tr("macButtonImportTunnels"))
         noTunnelsVC.onButtonClicked = { [weak self] in
@@ -134,6 +147,7 @@ extension ManageTunnelsRootViewController {
         case #selector(TunnelsListTableViewController.handleViewLogAction),
              #selector(TunnelsListTableViewController.handleAddEmptyTunnelAction),
              #selector(TunnelsListTableViewController.handleAddFailoverGroupAction),
+             #selector(TunnelsListTableViewController.handleAddTiTGroupAction),
              #selector(TunnelsListTableViewController.handleImportTunnelAction),
              #selector(TunnelsListTableViewController.handleExportTunnelsAction),
              #selector(TunnelsListTableViewController.handleRemoveTunnelAction):
@@ -144,6 +158,9 @@ extension ManageTunnelsRootViewController {
         case #selector(FailoverGroupDetailTableViewController.handleToggleActiveStatusAction),
              #selector(FailoverGroupDetailTableViewController.handleEditAction):
             return failoverGroupDetailVC
+        case #selector(TunnelInTunnelDetailTableViewController.handleToggleActiveStatusAction),
+             #selector(TunnelInTunnelDetailTableViewController.handleEditAction):
+            return titGroupDetailVC
         default:
             return super.supplementalTarget(forAction: action, sender: sender)
         }

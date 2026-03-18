@@ -18,7 +18,8 @@ class TunnelsListTableViewController: UIViewController {
 
     enum ListSection: Int, CaseIterable {
         case failoverGroups = 0
-        case tunnels = 1
+        case titGroups = 1
+        case tunnels = 2
     }
 
     // Failover state polling for the active config name display
@@ -134,10 +135,11 @@ class TunnelsListTableViewController: UIViewController {
         self.tunnelsManager = tunnelsManager
         tunnelsManager.tunnelsListDelegate = self
         tunnelsManager.failoverGroupListDelegate = self
+        tunnelsManager.titGroupListDelegate = self
 
         busyIndicator.stopAnimating()
         tableView.reloadData()
-        centeredAddButton.isHidden = (tunnelsManager.numberOfTunnels() > 0 || tunnelsManager.numberOfFailoverGroups() > 0)
+        centeredAddButton.isHidden = (tunnelsManager.numberOfTunnels() > 0 || tunnelsManager.numberOfFailoverGroups() > 0 || tunnelsManager.numberOfTiTGroups() > 0)
 
         startPollingFailoverState()
     }
@@ -175,6 +177,13 @@ class TunnelsListTableViewController: UIViewController {
             }
         }
         alert.addAction(createFailoverGroupAction)
+
+        let createTiTGroupAction = UIAlertAction(title: "Create Tunnel-in-Tunnel", style: .default) { [weak self] _ in
+            if let self = self, let tunnelsManager = self.tunnelsManager {
+                self.presentTiTGroupEditor(tunnelsManager: tunnelsManager)
+            }
+        }
+        alert.addAction(createTiTGroupAction)
 
         let cancelAction = UIAlertAction(title: tr("actionCancel"), style: .cancel)
         alert.addAction(cancelAction)
@@ -302,6 +311,32 @@ class TunnelsListTableViewController: UIViewController {
         self.presentedViewController?.dismiss(animated: false, completion: nil)
     }
 
+    func presentTiTGroupEditor(tunnelsManager: TunnelsManager, groupTunnel: TunnelContainer? = nil) {
+        let editVC = TunnelInTunnelEditTableViewController(tunnelsManager: tunnelsManager, groupTunnel: groupTunnel)
+        editVC.delegate = self
+        let editNC = UINavigationController(rootViewController: editVC)
+        editNC.modalPresentationStyle = .formSheet
+        present(editNC, animated: true)
+    }
+
+    func showTiTGroupDetail(for tunnel: TunnelContainer, animated: Bool) {
+        guard let tunnelsManager = tunnelsManager else { return }
+        guard let splitViewController = splitViewController else { return }
+        guard let navController = navigationController else { return }
+
+        let detailVC = TunnelInTunnelDetailTableViewController(tunnelsManager: tunnelsManager,
+                                                               tunnel: tunnel)
+        let detailNC = UINavigationController(rootViewController: detailVC)
+        detailNC.restorationIdentifier = "DetailNC"
+        if splitViewController.isCollapsed && navController.viewControllers.count > 1 {
+            navController.setViewControllers([self, detailNC], animated: animated)
+        } else {
+            splitViewController.showDetailViewController(detailNC, sender: self, animated: animated)
+        }
+        detailDisplayedTunnel = tunnel
+        self.presentedViewController?.dismiss(animated: false, completion: nil)
+    }
+
     func showFailoverGroupDetail(for tunnel: TunnelContainer, animated: Bool) {
         guard let tunnelsManager = tunnelsManager else { return }
         guard let splitViewController = splitViewController else { return }
@@ -349,11 +384,14 @@ extension TunnelsListTableViewController: UITableViewDataSource {
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard let listSection = ListSection(rawValue: section) else { return nil }
+        let hasGroups = (tunnelsManager?.numberOfFailoverGroups() ?? 0) > 0 || (tunnelsManager?.numberOfTiTGroups() ?? 0) > 0
         switch listSection {
         case .failoverGroups:
             return (tunnelsManager?.numberOfFailoverGroups() ?? 0) == 0 ? nil : "Failover Groups"
+        case .titGroups:
+            return (tunnelsManager?.numberOfTiTGroups() ?? 0) == 0 ? nil : "Tunnel-in-Tunnel"
         case .tunnels:
-            return (tunnelsManager?.numberOfFailoverGroups() ?? 0) == 0 ? nil : "Tunnels"
+            return hasGroups ? "Tunnels" : nil
         }
     }
 
@@ -362,6 +400,8 @@ extension TunnelsListTableViewController: UITableViewDataSource {
         switch listSection {
         case .failoverGroups:
             return tunnelsManager?.numberOfFailoverGroups() ?? 0
+        case .titGroups:
+            return tunnelsManager?.numberOfTiTGroups() ?? 0
         case .tunnels:
             return tunnelsManager?.numberOfTunnels() ?? 0
         }
@@ -379,6 +419,30 @@ extension TunnelsListTableViewController: UITableViewDataSource {
                 if let groupId = groupTunnel.failoverGroupId {
                     cell.activeConfigName = failoverStateConfigNames[groupId]
                 }
+                cell.onSwitchToggled = { [weak self] isOn in
+                    guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
+                    if groupTunnel.hasOnDemandRules {
+                        tunnelsManager.setOnDemandEnabled(isOn, on: groupTunnel) { error in
+                            if error == nil && !isOn {
+                                tunnelsManager.startDeactivation(of: groupTunnel)
+                            }
+                        }
+                    } else {
+                        if isOn {
+                            tunnelsManager.startActivation(of: groupTunnel)
+                        } else {
+                            tunnelsManager.startDeactivation(of: groupTunnel)
+                        }
+                    }
+                }
+            }
+            return cell
+
+        case .titGroups:
+            let cell: FailoverGroupCell = tableView.dequeueReusableCell(for: indexPath)
+            if let tunnelsManager = tunnelsManager {
+                let groupTunnel = tunnelsManager.titGroup(at: indexPath.row)
+                cell.tunnel = groupTunnel
                 cell.onSwitchToggled = { [weak self] isOn in
                     guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
                     if groupTunnel.hasOnDemandRules {
@@ -439,6 +503,11 @@ extension TunnelsListTableViewController: UITableViewDelegate {
             let groupTunnel = tunnelsManager.failoverGroup(at: indexPath.row)
             showFailoverGroupDetail(for: groupTunnel, animated: true)
 
+        case .titGroups:
+            guard let tunnelsManager = tunnelsManager else { return }
+            let groupTunnel = tunnelsManager.titGroup(at: indexPath.row)
+            showTiTGroupDetail(for: groupTunnel, animated: true)
+
         case .tunnels:
             guard let tunnelsManager = tunnelsManager else { return }
             let tunnel = tunnelsManager.tunnel(at: indexPath.row)
@@ -463,6 +532,21 @@ extension TunnelsListTableViewController: UITableViewDelegate {
                 guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
                 let groupTunnel = tunnelsManager.failoverGroup(at: indexPath.row)
                 tunnelsManager.removeFailoverGroup(tunnel: groupTunnel) { error in
+                    if error != nil {
+                        ErrorPresenter.showErrorAlert(error: error!, from: self)
+                        completionHandler(false)
+                    } else {
+                        completionHandler(true)
+                    }
+                }
+            }
+            return UISwipeActionsConfiguration(actions: [deleteAction])
+
+        case .titGroups:
+            let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
+                guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
+                let groupTunnel = tunnelsManager.titGroup(at: indexPath.row)
+                tunnelsManager.removeTiTGroup(tunnel: groupTunnel) { error in
                     if error != nil {
                         ErrorPresenter.showErrorAlert(error: error!, from: self)
                         completionHandler(false)
@@ -575,6 +659,57 @@ extension TunnelsListTableViewController: TunnelsManagerFailoverGroupListDelegat
                 self.presentedViewController?.dismiss(animated: false, completion: nil)
             }
         }
+    }
+}
+
+// MARK: - TunnelsManagerTiTGroupListDelegate
+
+extension TunnelsListTableViewController: TunnelsManagerTiTGroupListDelegate {
+    private var titGroupsSection: Int { ListSection.titGroups.rawValue }
+
+    func titGroupAdded(at index: Int) {
+        tableView.insertRows(at: [IndexPath(row: index, section: titGroupsSection)], with: .automatic)
+        centeredAddButton.isHidden = true
+    }
+
+    func titGroupModified(at index: Int) {
+        tableView.reloadRows(at: [IndexPath(row: index, section: titGroupsSection)], with: .automatic)
+    }
+
+    func titGroupMoved(from oldIndex: Int, to newIndex: Int) {
+        tableView.moveRow(at: IndexPath(row: oldIndex, section: titGroupsSection), to: IndexPath(row: newIndex, section: titGroupsSection))
+    }
+
+    func titGroupRemoved(at index: Int, tunnel: TunnelContainer) {
+        tableView.deleteRows(at: [IndexPath(row: index, section: titGroupsSection)], with: .automatic)
+        centeredAddButton.isHidden = (tunnelsManager?.numberOfTunnels() ?? 0) > 0 || (tunnelsManager?.numberOfFailoverGroups() ?? 0) > 0 || (tunnelsManager?.numberOfTiTGroups() ?? 0) > 0
+        if detailDisplayedTunnel == tunnel, let splitViewController = splitViewController {
+            if splitViewController.isCollapsed != false {
+                (splitViewController.viewControllers[0] as? UINavigationController)?.popToRootViewController(animated: false)
+            } else {
+                let detailVC = UIViewController()
+                detailVC.view.backgroundColor = .systemBackground
+                let detailNC = UINavigationController(rootViewController: detailVC)
+                splitViewController.showDetailViewController(detailNC, sender: self)
+            }
+            detailDisplayedTunnel = nil
+            if let presentedNavController = self.presentedViewController as? UINavigationController,
+               presentedNavController.viewControllers.first is TunnelInTunnelEditTableViewController {
+                self.presentedViewController?.dismiss(animated: false, completion: nil)
+            }
+        }
+    }
+}
+
+// MARK: - TunnelInTunnelEditDelegate
+
+extension TunnelsListTableViewController: TunnelInTunnelEditDelegate {
+    func titGroupSaved(_ tunnel: TunnelContainer) {
+        // Table updates handled by TunnelsManagerTiTGroupListDelegate
+    }
+
+    func titGroupDeleted(_ tunnel: TunnelContainer) {
+        // Table updates handled by TunnelsManagerTiTGroupListDelegate
     }
 }
 

@@ -84,11 +84,18 @@ class FailoverGroupListRow: NSView {
     private func updateSubtitleLabel() {
         guard let tunnel = tunnel,
               let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-              let configNames = proto.providerConfiguration?["FailoverConfigNames"] as? [String] else {
+              let providerConfig = proto.providerConfiguration else {
             subtitleLabel.stringValue = ""
             return
         }
-        subtitleLabel.stringValue = configNames.joined(separator: " \u{2192} ")
+        if let configNames = providerConfig["FailoverConfigNames"] as? [String] {
+            subtitleLabel.stringValue = configNames.joined(separator: " \u{2192} ")
+        } else if let outerName = providerConfig[TunnelInTunnelConfigKeys.outerName] as? String,
+                  let innerName = providerConfig[TunnelInTunnelConfigKeys.innerName] as? String {
+            subtitleLabel.stringValue = "\(outerName) \u{2192} \(innerName)"
+        } else {
+            subtitleLabel.stringValue = ""
+        }
     }
 
     override func prepareForReuse() {

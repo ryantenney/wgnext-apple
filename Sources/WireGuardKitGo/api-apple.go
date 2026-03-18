@@ -960,6 +960,19 @@ func wgGetConfigTiT(handle int32) *C.char {
 	return C.CString(settings)
 }
 
+//export wgGetOuterConfigTiT
+func wgGetOuterConfigTiT(handle int32) *C.char {
+	h, ok := titHandles[handle]
+	if !ok {
+		return nil
+	}
+	settings, err := h.outerDev.IpcGet()
+	if err != nil {
+		return nil
+	}
+	return C.CString(settings)
+}
+
 //export wgSetInnerConfigTiT
 func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
 	h, ok := titHandles[handle]

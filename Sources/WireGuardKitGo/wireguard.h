@@ -29,6 +29,7 @@ extern int32_t wgTurnOnTiT(const char *outerSettings, const char *innerSettings,
                             const char *outerIfaceIP, int32_t tun_fd);
 extern void    wgTurnOffTiT(int32_t handle);
 extern char   *wgGetConfigTiT(int32_t handle);
+extern char   *wgGetOuterConfigTiT(int32_t handle);
 extern int64_t wgSetInnerConfigTiT(int32_t handle, const char *settings);
 extern void    wgBumpSocketsTiT(int32_t handle);
 extern void    wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(int32_t handle);

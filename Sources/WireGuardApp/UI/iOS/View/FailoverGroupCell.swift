@@ -141,11 +141,18 @@ class FailoverGroupCell: UITableViewCell {
     private func updateDetailLabel() {
         guard let tunnel = tunnel,
               let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-              let configNames = proto.providerConfiguration?["FailoverConfigNames"] as? [String] else {
+              let providerConfig = proto.providerConfiguration else {
             detailLabel.text = ""
             return
         }
-        detailLabel.text = configNames.joined(separator: " → ")
+        if let configNames = providerConfig["FailoverConfigNames"] as? [String] {
+            detailLabel.text = configNames.joined(separator: " \u{2192} ")
+        } else if let outerName = providerConfig[TunnelInTunnelConfigKeys.outerName] as? String,
+                  let innerName = providerConfig[TunnelInTunnelConfigKeys.innerName] as? String {
+            detailLabel.text = "\(outerName) \u{2192} \(innerName)"
+        } else {
+            detailLabel.text = ""
+        }
     }
 
     private func updateActiveConfigLabel() {

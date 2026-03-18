@@ -203,6 +203,32 @@ public class WireGuardAdapter {
         }
     }
 
+    /// Get runtime configurations for both INNER and OUTER TiT tunnels.
+    /// Returns `(inner, outer)` UAPI config strings, or `(nil, nil)` if not in TiT mode.
+    public func getTiTRuntimeConfigurations(completionHandler: @escaping (String?, String?) -> Void) {
+        workQueue.async {
+            guard case .startedTiT(let handle, _) = self.state else {
+                completionHandler(nil, nil)
+                return
+            }
+            let inner: String?
+            if let settings = wgGetConfigTiT(handle) {
+                inner = String(cString: settings)
+                free(settings)
+            } else {
+                inner = nil
+            }
+            let outer: String?
+            if let settings = wgGetOuterConfigTiT(handle) {
+                outer = String(cString: settings)
+                free(settings)
+            } else {
+                outer = nil
+            }
+            completionHandler(inner, outer)
+        }
+    }
+
     /// Start the tunnel tunnel.
     /// - Parameters:
     ///   - tunnelConfiguration: tunnel configuration.

@@ -240,6 +240,31 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
         #endif
 
+        case 4:
+            // TiT: get runtime stats for both INNER and OUTER tunnels
+            adapter.getTiTRuntimeConfigurations { innerConfig, outerConfig in
+                var state: [String: Any] = [:]
+                if let innerConfig = innerConfig {
+                    let (tx, rx) = ConnectionHealthMonitor.parseTxRxBytes(from: innerConfig)
+                    state["innerTxBytes"] = tx
+                    state["innerRxBytes"] = rx
+                    let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: innerConfig)
+                    if handshakeAge != .infinity {
+                        state["innerLastHandshakeTime"] = Date().timeIntervalSince1970 - handshakeAge
+                    }
+                }
+                if let outerConfig = outerConfig {
+                    let (tx, rx) = ConnectionHealthMonitor.parseTxRxBytes(from: outerConfig)
+                    state["outerTxBytes"] = tx
+                    state["outerRxBytes"] = rx
+                    let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: outerConfig)
+                    if handshakeAge != .infinity {
+                        state["outerLastHandshakeTime"] = Date().timeIntervalSince1970 - handshakeAge
+                    }
+                }
+                completionHandler(try? JSONSerialization.data(withJSONObject: state))
+            }
+
         default:
             completionHandler(nil)
         }
