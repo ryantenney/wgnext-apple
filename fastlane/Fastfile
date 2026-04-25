@@ -99,7 +99,7 @@ platform :ios do
       skip_package_dependencies_resolution: true,
       xcargs: "-allowProvisioningUpdates"
     )
-    install_on_device
+    install_ios_app
   end
 
   desc "Build and install on device with failover testing enabled"
@@ -113,7 +113,7 @@ platform :ios do
       skip_package_dependencies_resolution: true,
       xcargs: "-allowProvisioningUpdates SWIFT_ACTIVE_COMPILATION_CONDITIONS=\"DEBUG FAILOVER_TESTING\""
     )
-    install_on_device
+    install_ios_app
   end
 
   desc "Build and upload to TestFlight"
@@ -210,6 +210,30 @@ platform :ios do
   desc "Sync development signing (via match)"
   lane :signing do
     match(type: "development")
+  end
+
+  private_lane :install_ios_app do
+    archive = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
+    UI.user_error!("Could not find built archive to install from") unless archive && File.exist?(archive)
+
+    app_output = Dir.glob("#{archive}/Products/Applications/*.app").first
+    UI.user_error!("Could not find built .app inside archive") unless app_output && File.exist?(app_output)
+
+    device_id = ENV["IOS_DEVICE_ID"] || ENV["DEVICE_ID"]
+
+    if device_id && !device_id.empty?
+      sh("xcrun devicectl device install app --device '#{device_id}' '#{app_output}'")
+      UI.success("Installed #{File.basename(app_output)} on device #{device_id}")
+      next
+    end
+
+    unless `which ios-deploy`.strip.empty?
+      sh("ios-deploy --bundle '#{app_output}' --no-wifi")
+      UI.success("Installed #{File.basename(app_output)} on connected device")
+      next
+    end
+
+    UI.user_error!("No install method available. Set IOS_DEVICE_ID (or DEVICE_ID) to use devicectl, or install ios-deploy.")
   end
 
 end
