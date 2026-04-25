@@ -36,6 +36,9 @@ class MainMenu: NSMenu {
         menu.addItem(withTitle: tr("macMenuViewLog"),
                      action: #selector(TunnelsListTableViewController.handleViewLogAction), keyEquivalent: "")
 
+        menu.addItem(withTitle: tr("macMenuSessionHistory"),
+                     action: #selector(TunnelsListTableViewController.handleViewSessionHistoryAction), keyEquivalent: "")
+
         menu.addItem(NSMenuItem.separator())
 
         let hideMenuItem = menu.addItem(withTitle: tr("macMenuHideApp"),

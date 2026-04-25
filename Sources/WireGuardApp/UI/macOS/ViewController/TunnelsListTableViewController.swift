@@ -73,6 +73,7 @@ class TunnelsListTableViewController: NSViewController {
         let menu = NSMenu()
         menu.addItem(imageItem)
         menu.addItem(withTitle: tr("macMenuViewLog"), action: #selector(handleViewLogAction), keyEquivalent: "")
+        menu.addItem(withTitle: tr("macMenuSessionHistory"), action: #selector(handleViewSessionHistoryAction), keyEquivalent: "")
         menu.addItem(withTitle: tr("macMenuExportTunnels"), action: #selector(handleExportTunnelsAction), keyEquivalent: "")
         menu.autoenablesItems = false
 
@@ -286,6 +287,11 @@ class TunnelsListTableViewController: NSViewController {
     @objc func handleViewLogAction() {
         let logVC = LogViewController()
         self.presentAsSheet(logVC)
+    }
+
+    @objc func handleViewSessionHistoryAction() {
+        let historyVC = SessionHistoryViewController()
+        self.presentAsSheet(historyVC)
     }
 
     @objc func handleExportTunnelsAction() {

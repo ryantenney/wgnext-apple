@@ -243,6 +243,61 @@
 "settingsSectionTitleTunnelLog" = "Log";
 "settingsViewLogButtonTitle" = "View log";
 
+"settingsSectionTitleSessionHistory" = "Session history";
+"settingsSessionHistoryButtonTitle" = "View session history";
+
+// Session history
+
+"sessionHistoryViewTitle" = "Session history";
+"sessionHistoryEmptyMessage" = "No completed sessions yet.";
+"sessionHistoryClearButtonTitle" = "Clear";
+"sessionHistoryClearConfirmTitle" = "Clear all session history?";
+"sessionHistoryClearConfirmMessage" = "This cannot be undone.";
+
+"sessionDetailLabelTunnel" = "Tunnel";
+"sessionDetailLabelStarted" = "Started";
+"sessionDetailLabelEnded" = "Ended";
+"sessionDetailLabelDuration" = "Duration";
+"sessionDetailLabelActivation" = "Activation";
+"sessionDetailLabelDeactivation" = "Deactivation";
+"sessionDetailLabelInitialConfig" = "Initial config";
+"sessionDetailLabelRxBytes" = "Received";
+"sessionDetailLabelTxBytes" = "Sent";
+"sessionDetailSectionSummary" = "Summary";
+"sessionDetailSectionTraffic" = "Traffic";
+"sessionDetailSectionFailoverEvents" = "Failover events";
+
+"sessionStatusInProgress" = "In progress";
+
+"sessionActivationManual" = "Manual";
+"sessionActivationOnDemand" = "On-demand";
+"sessionActivationUnknown" = "Unknown";
+
+"sessionDeactivationUserInitiated" = "User disconnected";
+"sessionDeactivationProviderFailed" = "Provider failed";
+"sessionDeactivationNoNetwork" = "No network available";
+"sessionDeactivationNetworkChange" = "Network changed";
+"sessionDeactivationProviderDisabled" = "VPN disabled";
+"sessionDeactivationAuthCanceled" = "Authentication canceled";
+"sessionDeactivationConfigFailed" = "Configuration failed";
+"sessionDeactivationIdleTimeout" = "Idle timeout";
+"sessionDeactivationConfigDisabled" = "Configuration disabled";
+"sessionDeactivationConfigRemoved" = "Configuration removed";
+"sessionDeactivationSuperceded" = "Superseded";
+"sessionDeactivationLogout" = "User logout";
+"sessionDeactivationUserSwitch" = "User switch";
+"sessionDeactivationConnectionFailed" = "Connection failed";
+"sessionDeactivationSleep" = "Sleep";
+"sessionDeactivationAppUpdate" = "App update";
+"sessionDeactivationInternalError" = "Internal error";
+"sessionDeactivationEndedUnexpectedly" = "Ended unexpectedly";
+
+"sessionFailoverSwitched (%@: %@)" = "Switched: %@ → %@";
+"sessionFailoverUnhealthy (%@: %@)" = "Unhealthy: %@ (%@ tx without rx)";
+"sessionFailoverFailedBack (%@)" = "Failed back to %@";
+
+"macMenuSessionHistory" = "Session History…";
+
 // Log view
 
 "logViewTitle" = "Log";

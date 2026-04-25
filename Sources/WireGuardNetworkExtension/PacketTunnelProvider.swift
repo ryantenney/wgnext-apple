@@ -50,9 +50,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// When this tunnel session connected.
     private var tunnelConnectedSince: Date?
 
+    // MARK: - Session History
+
+    /// In-progress session record for this tunnel run. Mutations must go through `sessionQueue`.
+    private var currentSession: SessionRecord?
+
+    /// Whether the `options` parameter to `startTunnel` was nil — Apple's convention indicates
+    /// `nil` means started by the OS (on-demand rule fired) and non-nil means started by the app.
+    private var startupOptionsWasNil: Bool = true
+
+    /// Serializes mutations of `currentSession` across the stats poll queue, the health monitor's
+    /// queue, and the system NE start/stop queues.
+    private let sessionQueue = DispatchQueue(label: "PacketTunnelProvider.SessionHistory")
+
     override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         let activationAttemptId = options?["activationAttemptId"] as? String
         let errorNotifier = ErrorNotifier(activationAttemptId: activationAttemptId)
+        startupOptionsWasNil = (options == nil)
 
         Logger.configureGlobal(tagged: "NET", withFilePath: FileManager.logFileURL?.path)
 
@@ -117,15 +131,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
         wg_log(.info, staticMessage: "Stopping tunnel")
 
-        // Determine a display name for disconnect notifications
-        let displayName: String
-        if let configNames = (self.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverConfigNames"] as? [String], let firstName = configNames.first {
-            displayName = firstName
-        } else if let config = (self.protocolConfiguration as? NETunnelProviderProtocol)?.asTunnelConfiguration() {
-            displayName = config.name ?? "WireGuard"
-        } else {
-            displayName = "WireGuard"
-        }
+        let displayName = resolveDisplayName()
 
         // Post a disconnect notification if the user enabled it and the stop was
         // not triggered by the user themselves (e.g. network lost, server closed).
@@ -134,6 +140,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             postDisconnectNotificationIfEnabled(tunnelName: displayName, reason: reason)
         }
         #endif
+
+        finalizeSessionRecord(reason: reason)
 
         adapter.healthMonitor?.stop()
         adapter.healthMonitor = nil
@@ -287,6 +295,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             initialActiveConfig = nil
         }
 
+        // Begin a session history record sharing the same start timestamp.
+        let activationReason: ActivationReason = startupOptionsWasNil ? .onDemand : .manual
+        let session = SessionRecord(
+            tunnelName: resolveDisplayName(),
+            startedAt: tunnelConnectedSince!,
+            activationReason: activationReason,
+            initialActiveConfigName: initialActiveConfig
+        )
+        sessionQueue.sync {
+            self.currentSession = session
+            SessionHistoryStore.saveCurrent(session)
+        }
+
         // Write initial traffic data immediately so the widget sees it right away
         let initial = VPNTrafficData(
             txBytes: 0,
@@ -338,6 +359,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.previousStatsRxBytes = currentRx
             self.previousStatsTime = now
 
+            // Update the in-progress session record with the latest byte totals.
+            self.sessionQueue.sync {
+                guard var session = self.currentSession else { return }
+                session.rxBytes = currentRx
+                session.txBytes = currentTx
+                self.currentSession = session
+                SessionHistoryStore.saveCurrent(session)
+            }
+
             // Parse last handshake
             let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: configString)
             let lastHandshake: Date? = handshakeAge != .infinity ? now.addingTimeInterval(-handshakeAge) : nil
@@ -369,6 +399,47 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 updatedAt: now
             )
             VPNTrafficData.save(trafficData)
+        }
+    }
+
+    // MARK: - Session History helpers
+
+    /// Resolve a user-visible display name for the tunnel run, preferring failover group / TiT
+    /// group names when applicable.
+    private func resolveDisplayName() -> String {
+        let proto = self.protocolConfiguration as? NETunnelProviderProtocol
+        if let configNames = proto?.providerConfiguration?["FailoverConfigNames"] as? [String], let firstName = configNames.first {
+            return firstName
+        } else if let config = proto?.asTunnelConfiguration() {
+            return config.name ?? "WireGuard"
+        }
+        return "WireGuard"
+    }
+
+    /// Append a failover event to the in-progress session and persist it.
+    private func appendFailoverEvent(_ event: FailoverEvent) {
+        sessionQueue.sync {
+            guard var session = self.currentSession else { return }
+            session.failoverEvents.append(event)
+            self.currentSession = session
+            SessionHistoryStore.saveCurrent(session)
+        }
+    }
+
+    /// Finalize the in-progress session and append it to the history archive. Called from
+    /// `stopTunnel` synchronously (before `adapter.stop` and the macOS `exit(0)`), so the file
+    /// is durably written before the extension shuts down. Uses the most recent rx/tx values
+    /// from the periodic poll (up to ~30 s stale, by design).
+    private func finalizeSessionRecord(reason: NEProviderStopReason) {
+        sessionQueue.sync {
+            guard var session = self.currentSession else { return }
+            session.endedAt = Date()
+            session.rxBytes = self.previousStatsRxBytes
+            session.txBytes = self.previousStatsTxBytes
+            session.deactivationReason = DeactivationReason(from: reason)
+            SessionHistoryStore.appendCompleted(session)
+            SessionHistoryStore.clearCurrent()
+            self.currentSession = nil
         }
     }
 
@@ -547,6 +618,13 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: now active on '\(name)'")
+        appendFailoverEvent(FailoverEvent(
+            kind: .switched,
+            timestamp: Date(),
+            fromConfigName: previousName,
+            toConfigName: name,
+            txWithoutRxDuration: nil
+        ))
         #if os(iOS)
         postFailoverNotificationIfEnabled(from: previousName, to: name)
         #endif
@@ -555,12 +633,26 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectUnhealthyConnectionAt index: Int, txWithoutRxDuration: TimeInterval) {
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: '\(name)' unhealthy (tx without rx for \(Int(txWithoutRxDuration))s)")
+        appendFailoverEvent(FailoverEvent(
+            kind: .unhealthy,
+            timestamp: Date(),
+            fromConfigName: name,
+            toConfigName: nil,
+            txWithoutRxDuration: txWithoutRxDuration
+        ))
     }
 
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int) {
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: successfully failed back to '\(name)'")
+        appendFailoverEvent(FailoverEvent(
+            kind: .failedBack,
+            timestamp: Date(),
+            fromConfigName: nil,
+            toConfigName: name,
+            txWithoutRxDuration: nil
+        ))
         #if os(iOS)
         postFailbackNotificationIfEnabled(to: name)
         #endif
