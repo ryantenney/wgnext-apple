@@ -116,6 +116,20 @@ class TunnelsManager {
             #if os(iOS)
             RecentTunnelsTracker.cleanupTunnels(except: tunnelNames)
             #endif
+
+            // Finalize any session-history record left orphaned by an unclean extension exit.
+            // Only safe when no tunnel is currently connecting/connected; otherwise the file is
+            // owned by the running extension and will be rewritten momentarily.
+            let anyActive = tunnelManagers.contains { manager in
+                let status = manager.connection.status
+                return status == .connected || status == .connecting || status == .reasserting
+            }
+            if !anyActive {
+                DispatchQueue.global(qos: .utility).async {
+                    SessionHistoryStore.recoverOrphanedCurrent()
+                }
+            }
+
             completionHandler(.success(TunnelsManager(tunnelProviders: tunnelManagers)))
         }
         #endif
