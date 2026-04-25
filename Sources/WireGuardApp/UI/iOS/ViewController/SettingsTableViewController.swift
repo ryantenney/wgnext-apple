@@ -121,7 +121,7 @@ class SettingsTableViewController: UITableViewController {
             }
 
             // Gather tunnel-in-tunnel group configs for export
-            let tunnelInTunnelGroups = TunnelInTunnelGroupManager.loadGroups().map {
+            let tunnelInTunnelGroups = titGroupPersistence.loadGroups().map {
                 (name: $0.name, config: TunnelInTunnelGroupConfig.configString(from: $0))
             }
 

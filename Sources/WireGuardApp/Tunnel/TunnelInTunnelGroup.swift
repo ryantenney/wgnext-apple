@@ -7,7 +7,7 @@ import NetworkExtension
 /// A tunnel-in-tunnel (TiT) group pairs an OUTER WireGuard config (Server A) with an INNER
 /// WireGuard config (Server B).  User traffic travels:
 ///   device → INNER wg-go (utun) → PipedBind → OUTER wg-go (virtual TUN) → Server A → Server B → Internet
-struct TunnelInTunnelGroup: Codable, Equatable {
+struct TunnelInTunnelGroup: Codable, Equatable, Identifiable {
     var id: UUID
     /// Display name shown in the app.
     var name: String
@@ -50,67 +50,16 @@ enum TunnelInTunnelConfigKeys {
     static let innerName   = "TiTInnerName"
 }
 
-/// Manages persistence and retrieval of TiT groups.
-class TunnelInTunnelGroupManager {
+// MARK: - Cleanup
 
-    private static let fileName = "tit-groups.json"
-
-    private static var fileURL: URL? {
-        guard let appGroupId = FileManager.appGroupId else { return nil }
-        guard let sharedFolder = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else { return nil }
-        return sharedFolder.appendingPathComponent(fileName)
-    }
-
-    static func loadGroups() -> [TunnelInTunnelGroup] {
-        guard let url = fileURL else { return [] }
-        guard let data = try? Data(contentsOf: url) else { return [] }
-        return (try? JSONDecoder().decode([TunnelInTunnelGroup].self, from: data)) ?? []
-    }
-
-    static func saveGroups(_ groups: [TunnelInTunnelGroup]) {
-        guard let url = fileURL else {
-            wg_log(.error, staticMessage: "TiT: cannot determine shared folder for saving groups")
-            return
-        }
-        do {
-            let data = try JSONEncoder().encode(groups)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            wg_log(.error, message: "TiT: failed to save groups: \(error)")
-        }
-    }
-
-    static func addGroup(_ group: TunnelInTunnelGroup) {
-        var groups = loadGroups()
-        groups.append(group)
-        saveGroups(groups)
-    }
-
-    static func updateGroup(_ group: TunnelInTunnelGroup) {
-        var groups = loadGroups()
-        if let index = groups.firstIndex(where: { $0.id == group.id }) {
-            groups[index] = group
-        }
-        saveGroups(groups)
-    }
-
-    static func removeGroup(withId id: UUID) {
-        var groups = loadGroups()
-        groups.removeAll { $0.id == id }
-        saveGroups(groups)
-    }
-
-    static func group(withId id: UUID) -> TunnelInTunnelGroup? {
-        loadGroups().first { $0.id == id }
-    }
-
+extension TunnelInTunnelGroup {
     /// Remove groups that reference tunnels that no longer exist.
     static func cleanupGroups(existingTunnelNames: Set<String>) {
-        let groups = loadGroups().filter {
+        let groups = titGroupPersistence.loadGroups().filter {
             existingTunnelNames.contains($0.outerTunnelName) &&
             existingTunnelNames.contains($0.innerTunnelName)
         }
-        saveGroups(groups)
+        titGroupPersistence.saveGroups(groups)
     }
 }
 

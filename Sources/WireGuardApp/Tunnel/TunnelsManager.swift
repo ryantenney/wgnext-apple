@@ -14,19 +14,7 @@ protocol TunnelsManagerListDelegate: AnyObject {
     func tunnelRemoved(at index: Int, tunnel: TunnelContainer)
 }
 
-protocol TunnelsManagerFailoverGroupListDelegate: AnyObject {
-    func failoverGroupAdded(at index: Int)
-    func failoverGroupModified(at index: Int)
-    func failoverGroupMoved(from oldIndex: Int, to newIndex: Int)
-    func failoverGroupRemoved(at index: Int, tunnel: TunnelContainer)
-}
-
-protocol TunnelsManagerTiTGroupListDelegate: AnyObject {
-    func titGroupAdded(at index: Int)
-    func titGroupModified(at index: Int)
-    func titGroupMoved(from oldIndex: Int, to newIndex: Int)
-    func titGroupRemoved(at index: Int, tunnel: TunnelContainer)
-}
+// TunnelsManagerGroupListDelegate is defined in TunnelGroupKind.swift
 
 protocol TunnelsManagerActivationDelegate: AnyObject {
     func tunnelActivationAttemptFailed(tunnel: TunnelContainer, error: TunnelsManagerActivationAttemptError) // startTunnel wasn't called or failed
@@ -40,8 +28,7 @@ class TunnelsManager {
     var failoverGroupTunnels: [TunnelContainer]
     var titGroupTunnels: [TunnelContainer]
     weak var tunnelsListDelegate: TunnelsManagerListDelegate?
-    weak var failoverGroupListDelegate: TunnelsManagerFailoverGroupListDelegate?
-    weak var titGroupListDelegate: TunnelsManagerTiTGroupListDelegate?
+    weak var groupListDelegate: TunnelsManagerGroupListDelegate?
     weak var activationDelegate: TunnelsManagerActivationDelegate?
     private var statusObservationToken: NotificationToken?
     private var waiteeObservationToken: NSKeyValueObservation?
@@ -165,7 +152,7 @@ class TunnelsManager {
             for (index, currentGroup) in self.failoverGroupTunnels.enumerated().reversed() {
                 if !loadedFailoverGroups.contains(where: { $0.isEquivalentToFailoverGroup(currentGroup) }) {
                     self.failoverGroupTunnels.remove(at: index)
-                    self.failoverGroupListDelegate?.failoverGroupRemoved(at: index, tunnel: currentGroup)
+                    self.groupListDelegate?.groupRemoved(kind: .failover, at: index, tunnel: currentGroup)
                 }
             }
             for loadedProvider in loadedFailoverGroups {
@@ -176,7 +163,7 @@ class TunnelsManager {
                     let groupTunnel = TunnelContainer(tunnel: loadedProvider)
                     self.failoverGroupTunnels.append(groupTunnel)
                     self.failoverGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-                    self.failoverGroupListDelegate?.failoverGroupAdded(at: self.failoverGroupTunnels.firstIndex(of: groupTunnel)!)
+                    self.groupListDelegate?.groupAdded(kind: .failover, at: self.failoverGroupTunnels.firstIndex(of: groupTunnel)!)
                 }
             }
 
@@ -184,7 +171,7 @@ class TunnelsManager {
             for (index, currentGroup) in self.titGroupTunnels.enumerated().reversed() {
                 if !loadedTiTGroups.contains(where: { $0.isEquivalentToTiTGroup(currentGroup) }) {
                     self.titGroupTunnels.remove(at: index)
-                    self.titGroupListDelegate?.titGroupRemoved(at: index, tunnel: currentGroup)
+                    self.groupListDelegate?.groupRemoved(kind: .tunnelInTunnel, at: index, tunnel: currentGroup)
                 }
             }
             for loadedProvider in loadedTiTGroups {
@@ -195,7 +182,7 @@ class TunnelsManager {
                     let groupTunnel = TunnelContainer(tunnel: loadedProvider)
                     self.titGroupTunnels.append(groupTunnel)
                     self.titGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-                    self.titGroupListDelegate?.titGroupAdded(at: self.titGroupTunnels.firstIndex(of: groupTunnel)!)
+                    self.groupListDelegate?.groupAdded(kind: .tunnelInTunnel, at: self.titGroupTunnels.firstIndex(of: groupTunnel)!)
                 }
             }
         }
@@ -564,7 +551,28 @@ class TunnelsManager {
         return tunnels.first { $0.name == tunnelName }
     }
 
-    // MARK: - Failover Group Accessors
+    // MARK: - Group Accessors (unified)
+
+    func groupTunnels(kind: TunnelGroupKind) -> [TunnelContainer] {
+        switch kind {
+        case .failover: return failoverGroupTunnels
+        case .tunnelInTunnel: return titGroupTunnels
+        }
+    }
+
+    func numberOfGroups(kind: TunnelGroupKind) -> Int {
+        return groupTunnels(kind: kind).count
+    }
+
+    func group(kind: TunnelGroupKind, at index: Int) -> TunnelContainer {
+        return groupTunnels(kind: kind)[index]
+    }
+
+    func groupIndex(kind: TunnelGroupKind, of tunnel: TunnelContainer) -> Int? {
+        return groupTunnels(kind: kind).firstIndex(of: tunnel)
+    }
+
+    // MARK: - Legacy Failover Group Accessors
 
     func numberOfFailoverGroups() -> Int {
         return failoverGroupTunnels.count
@@ -578,7 +586,7 @@ class TunnelsManager {
         return failoverGroupTunnels.firstIndex(of: tunnel)
     }
 
-    // MARK: - Tunnel-in-Tunnel Group Accessors
+    // MARK: - Legacy Tunnel-in-Tunnel Group Accessors
 
     func numberOfTiTGroups() -> Int {
         return titGroupTunnels.count
@@ -877,20 +885,33 @@ class TunnelContainer: NSObject {
         }
     }
 
+    var groupKind: TunnelGroupKind? {
+        guard let config = (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration else {
+            return nil
+        }
+        if config["FailoverGroupId"] != nil { return .failover }
+        if config[TunnelInTunnelConfigKeys.groupId] != nil { return .tunnelInTunnel }
+        return nil
+    }
+
+    func groupId(for kind: TunnelGroupKind) -> String? {
+        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[kind.groupIdKey] as? String
+    }
+
     var isFailoverGroup: Bool {
-        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] != nil
+        return groupKind == .failover
     }
 
     var failoverGroupId: String? {
-        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] as? String
+        return groupId(for: .failover)
     }
 
     var isTiTGroup: Bool {
-        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[TunnelInTunnelConfigKeys.groupId] != nil
+        return groupKind == .tunnelInTunnel
     }
 
     var titGroupId: String? {
-        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[TunnelInTunnelConfigKeys.groupId] as? String
+        return groupId(for: .tunnelInTunnel)
     }
 
     var tunnelConfiguration: TunnelConfiguration? {

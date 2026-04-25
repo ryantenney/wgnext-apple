@@ -123,7 +123,7 @@ class TunnelImporter {
                 outerTunnelName: group.outerTunnelName,
                 innerTunnelName: group.innerTunnelName
             )
-            TunnelInTunnelGroupManager.addGroup(tunnelInTunnelGroup)
+            titGroupPersistence.addGroup(tunnelInTunnelGroup)
             successCount += 1
         }
         completionHandler(successCount)

@@ -50,7 +50,7 @@ class TunnelsTracker {
         }
 
         tunnelsManager.tunnelsListDelegate = self
-        tunnelsManager.failoverGroupListDelegate = self
+        tunnelsManager.groupListDelegate = self
         tunnelsManager.activationDelegate = self
     }
 
@@ -101,36 +101,54 @@ extension TunnelsTracker: TunnelsManagerListDelegate {
     }
 }
 
-extension TunnelsTracker: TunnelsManagerFailoverGroupListDelegate {
-    func failoverGroupAdded(at index: Int) {
-        let groupTunnel = tunnelsManager.failoverGroup(at: index)
+extension TunnelsTracker: TunnelsManagerGroupListDelegate {
+    func groupAdded(kind: TunnelGroupKind, at index: Int) {
+        let groupTunnel = tunnelsManager.group(kind: kind, at: index)
         if groupTunnel.status != .deactivating && groupTunnel.status != .inactive {
             self.currentTunnel = groupTunnel
         }
         let statusObservationToken = observeStatus(of: groupTunnel)
         failoverGroupStatusObservers.insert(statusObservationToken, at: index)
 
-        statusMenu?.insertFailoverGroupMenuItem(for: groupTunnel, at: index)
-        manageTunnelsRootVC?.tunnelsListVC?.failoverGroupAdded(at: index)
+        switch kind {
+        case .failover:
+            statusMenu?.insertFailoverGroupMenuItem(for: groupTunnel, at: index)
+            manageTunnelsRootVC?.tunnelsListVC?.failoverGroupAdded(at: index)
+        case .tunnelInTunnel:
+            manageTunnelsRootVC?.tunnelsListVC?.titGroupAdded(at: index)
+        }
     }
 
-    func failoverGroupModified(at index: Int) {
-        manageTunnelsRootVC?.tunnelsListVC?.failoverGroupModified(at: index)
+    func groupModified(kind: TunnelGroupKind, at index: Int) {
+        switch kind {
+        case .failover:
+            manageTunnelsRootVC?.tunnelsListVC?.failoverGroupModified(at: index)
+        case .tunnelInTunnel:
+            manageTunnelsRootVC?.tunnelsListVC?.titGroupModified(at: index)
+        }
     }
 
-    func failoverGroupMoved(from oldIndex: Int, to newIndex: Int) {
-        let statusObserver = failoverGroupStatusObservers.remove(at: oldIndex)
-        failoverGroupStatusObservers.insert(statusObserver, at: newIndex)
-
-        statusMenu?.moveFailoverGroupMenuItem(from: oldIndex, to: newIndex)
-        manageTunnelsRootVC?.tunnelsListVC?.failoverGroupMoved(from: oldIndex, to: newIndex)
+    func groupMoved(kind: TunnelGroupKind, from oldIndex: Int, to newIndex: Int) {
+        switch kind {
+        case .failover:
+            let statusObserver = failoverGroupStatusObservers.remove(at: oldIndex)
+            failoverGroupStatusObservers.insert(statusObserver, at: newIndex)
+            statusMenu?.moveFailoverGroupMenuItem(from: oldIndex, to: newIndex)
+            manageTunnelsRootVC?.tunnelsListVC?.failoverGroupMoved(from: oldIndex, to: newIndex)
+        case .tunnelInTunnel:
+            manageTunnelsRootVC?.tunnelsListVC?.titGroupMoved(from: oldIndex, to: newIndex)
+        }
     }
 
-    func failoverGroupRemoved(at index: Int, tunnel: TunnelContainer) {
-        failoverGroupStatusObservers.remove(at: index)
-
-        statusMenu?.removeFailoverGroupMenuItem(at: index)
-        manageTunnelsRootVC?.tunnelsListVC?.failoverGroupRemoved(at: index)
+    func groupRemoved(kind: TunnelGroupKind, at index: Int, tunnel: TunnelContainer) {
+        switch kind {
+        case .failover:
+            failoverGroupStatusObservers.remove(at: index)
+            statusMenu?.removeFailoverGroupMenuItem(at: index)
+            manageTunnelsRootVC?.tunnelsListVC?.failoverGroupRemoved(at: index)
+        case .tunnelInTunnel:
+            manageTunnelsRootVC?.tunnelsListVC?.titGroupRemoved(at: index)
+        }
     }
 }
 

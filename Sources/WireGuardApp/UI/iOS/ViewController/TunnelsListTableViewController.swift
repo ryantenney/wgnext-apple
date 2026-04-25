@@ -134,8 +134,7 @@ class TunnelsListTableViewController: UIViewController {
     func setTunnelsManager(tunnelsManager: TunnelsManager) {
         self.tunnelsManager = tunnelsManager
         tunnelsManager.tunnelsListDelegate = self
-        tunnelsManager.failoverGroupListDelegate = self
-        tunnelsManager.titGroupListDelegate = self
+        tunnelsManager.groupListDelegate = self
 
         busyIndicator.stopAnimating()
         tableView.reloadData()
@@ -623,66 +622,36 @@ extension TunnelsListTableViewController: TunnelsManagerListDelegate {
     }
 }
 
-// MARK: - TunnelsManagerFailoverGroupListDelegate
+// MARK: - TunnelsManagerGroupListDelegate
 
-extension TunnelsListTableViewController: TunnelsManagerFailoverGroupListDelegate {
-    private var failoverGroupsSection: Int { ListSection.failoverGroups.rawValue }
-
-    func failoverGroupAdded(at index: Int) {
-        tableView.insertRows(at: [IndexPath(row: index, section: failoverGroupsSection)], with: .automatic)
-        centeredAddButton.isHidden = true
-    }
-
-    func failoverGroupModified(at index: Int) {
-        tableView.reloadRows(at: [IndexPath(row: index, section: failoverGroupsSection)], with: .automatic)
-    }
-
-    func failoverGroupMoved(from oldIndex: Int, to newIndex: Int) {
-        tableView.moveRow(at: IndexPath(row: oldIndex, section: failoverGroupsSection), to: IndexPath(row: newIndex, section: failoverGroupsSection))
-    }
-
-    func failoverGroupRemoved(at index: Int, tunnel: TunnelContainer) {
-        tableView.deleteRows(at: [IndexPath(row: index, section: failoverGroupsSection)], with: .automatic)
-        centeredAddButton.isHidden = (tunnelsManager?.numberOfTunnels() ?? 0) > 0 || (tunnelsManager?.numberOfFailoverGroups() ?? 0) > 0
-        if detailDisplayedTunnel == tunnel, let splitViewController = splitViewController {
-            if splitViewController.isCollapsed != false {
-                (splitViewController.viewControllers[0] as? UINavigationController)?.popToRootViewController(animated: false)
-            } else {
-                let detailVC = UIViewController()
-                detailVC.view.backgroundColor = .systemBackground
-                let detailNC = UINavigationController(rootViewController: detailVC)
-                splitViewController.showDetailViewController(detailNC, sender: self)
-            }
-            detailDisplayedTunnel = nil
-            if let presentedNavController = self.presentedViewController as? UINavigationController,
-               presentedNavController.viewControllers.first is FailoverGroupEditTableViewController {
-                self.presentedViewController?.dismiss(animated: false, completion: nil)
-            }
+extension TunnelsListTableViewController: TunnelsManagerGroupListDelegate {
+    private func listSection(for kind: TunnelGroupKind) -> Int {
+        switch kind {
+        case .failover: return ListSection.failoverGroups.rawValue
+        case .tunnelInTunnel: return ListSection.titGroups.rawValue
         }
     }
-}
 
-// MARK: - TunnelsManagerTiTGroupListDelegate
-
-extension TunnelsListTableViewController: TunnelsManagerTiTGroupListDelegate {
-    private var titGroupsSection: Int { ListSection.titGroups.rawValue }
-
-    func titGroupAdded(at index: Int) {
-        tableView.insertRows(at: [IndexPath(row: index, section: titGroupsSection)], with: .automatic)
+    func groupAdded(kind: TunnelGroupKind, at index: Int) {
+        tableView.insertRows(at: [IndexPath(row: index, section: listSection(for: kind))], with: .automatic)
         centeredAddButton.isHidden = true
     }
 
-    func titGroupModified(at index: Int) {
-        tableView.reloadRows(at: [IndexPath(row: index, section: titGroupsSection)], with: .automatic)
+    func groupModified(kind: TunnelGroupKind, at index: Int) {
+        tableView.reloadRows(at: [IndexPath(row: index, section: listSection(for: kind))], with: .automatic)
     }
 
-    func titGroupMoved(from oldIndex: Int, to newIndex: Int) {
-        tableView.moveRow(at: IndexPath(row: oldIndex, section: titGroupsSection), to: IndexPath(row: newIndex, section: titGroupsSection))
+    func groupMoved(kind: TunnelGroupKind, from oldIndex: Int, to newIndex: Int) {
+        let section = listSection(for: kind)
+        tableView.moveRow(at: IndexPath(row: oldIndex, section: section), to: IndexPath(row: newIndex, section: section))
     }
 
-    func titGroupRemoved(at index: Int, tunnel: TunnelContainer) {
-        tableView.deleteRows(at: [IndexPath(row: index, section: titGroupsSection)], with: .automatic)
-        centeredAddButton.isHidden = (tunnelsManager?.numberOfTunnels() ?? 0) > 0 || (tunnelsManager?.numberOfFailoverGroups() ?? 0) > 0 || (tunnelsManager?.numberOfTiTGroups() ?? 0) > 0
+    func groupRemoved(kind: TunnelGroupKind, at index: Int, tunnel: TunnelContainer) {
+        tableView.deleteRows(at: [IndexPath(row: index, section: listSection(for: kind))], with: .automatic)
+        let hasAnyItems = (tunnelsManager?.numberOfTunnels() ?? 0) > 0
+            || (tunnelsManager?.numberOfFailoverGroups() ?? 0) > 0
+            || (tunnelsManager?.numberOfTiTGroups() ?? 0) > 0
+        centeredAddButton.isHidden = hasAnyItems
         if detailDisplayedTunnel == tunnel, let splitViewController = splitViewController {
             if splitViewController.isCollapsed != false {
                 (splitViewController.viewControllers[0] as? UINavigationController)?.popToRootViewController(animated: false)
@@ -693,10 +662,7 @@ extension TunnelsListTableViewController: TunnelsManagerTiTGroupListDelegate {
                 splitViewController.showDetailViewController(detailNC, sender: self)
             }
             detailDisplayedTunnel = nil
-            if let presentedNavController = self.presentedViewController as? UINavigationController,
-               presentedNavController.viewControllers.first is TunnelInTunnelEditTableViewController {
-                self.presentedViewController?.dismiss(animated: false, completion: nil)
-            }
+            self.presentedViewController?.dismiss(animated: false, completion: nil)
         }
     }
 }
@@ -705,11 +671,11 @@ extension TunnelsListTableViewController: TunnelsManagerTiTGroupListDelegate {
 
 extension TunnelsListTableViewController: TunnelInTunnelEditDelegate {
     func titGroupSaved(_ tunnel: TunnelContainer) {
-        // Table updates handled by TunnelsManagerTiTGroupListDelegate
+        // Table updates handled by TunnelsManagerGroupListDelegate
     }
 
     func titGroupDeleted(_ tunnel: TunnelContainer) {
-        // Table updates handled by TunnelsManagerTiTGroupListDelegate
+        // Table updates handled by TunnelsManagerGroupListDelegate
     }
 }
 
@@ -756,11 +722,11 @@ extension TunnelsListTableViewController {
 
 extension TunnelsListTableViewController: FailoverGroupEditDelegate {
     func failoverGroupSaved(_ tunnel: TunnelContainer) {
-        // The delegate methods from TunnelsManagerFailoverGroupListDelegate handle table updates
+        // The delegate methods from TunnelsManagerGroupListDelegate handle table updates
     }
 
     func failoverGroupDeleted(_ tunnel: TunnelContainer) {
-        // The delegate methods from TunnelsManagerFailoverGroupListDelegate handle table updates
+        // The delegate methods from TunnelsManagerGroupListDelegate handle table updates
     }
 }
 
