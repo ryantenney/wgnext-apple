@@ -14,6 +14,7 @@ class SettingsTableViewController: UITableViewController {
         case goBackendVersion
         case exportZipArchive
         case viewLog
+        case sessionHistory
         case notifyOnDisconnect
         case notifyOnFailover
         case ipDiscovery
@@ -24,6 +25,7 @@ class SettingsTableViewController: UITableViewController {
             case .goBackendVersion: return tr("settingsVersionKeyWireGuardGoBackend")
             case .exportZipArchive: return tr("settingsExportZipButtonTitle")
             case .viewLog: return tr("settingsViewLogButtonTitle")
+            case .sessionHistory: return tr("settingsSessionHistoryButtonTitle")
             case .notifyOnDisconnect: return tr("settingsNotifyOnDisconnect")
             case .notifyOnFailover: return tr("settingsNotifyOnFailover")
             case .ipDiscovery: return tr("settingsIPDiscovery")
@@ -36,7 +38,8 @@ class SettingsTableViewController: UITableViewController {
         [.notifyOnDisconnect, .notifyOnFailover],
         [.ipDiscovery],
         [.exportZipArchive],
-        [.viewLog]
+        [.viewLog],
+        [.sessionHistory]
     ]
 
     let tunnelsManager: TunnelsManager?
@@ -143,6 +146,11 @@ class SettingsTableViewController: UITableViewController {
 
     }
 
+    func presentSessionHistory() {
+        let historyVC = SessionHistoryViewController()
+        navigationController?.pushViewController(historyVC, animated: true)
+    }
+
     // MARK: - Notification Permission
 
     private func requestNotificationPermissionIfNeeded(completion: @escaping (Bool) -> Void) {
@@ -220,6 +228,8 @@ extension SettingsTableViewController {
             return tr("settingsSectionTitleExportConfigurations")
         case 4:
             return tr("settingsSectionTitleTunnelLog")
+        case 5:
+            return tr("settingsSectionTitleSessionHistory")
         default:
             return nil
         }
@@ -272,6 +282,13 @@ extension SettingsTableViewController {
             cell.buttonText = field.localizedUIString
             cell.onTapped = { [weak self] in
                 self?.presentLogView()
+            }
+            return cell
+        } else if field == .sessionHistory {
+            let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.buttonText = field.localizedUIString
+            cell.onTapped = { [weak self] in
+                self?.presentSessionHistory()
             }
             return cell
         }
