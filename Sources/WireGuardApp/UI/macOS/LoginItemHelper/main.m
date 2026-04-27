@@ -6,7 +6,7 @@
 int main(int argc, char *argv[])
 {
     NSString *appId = [NSBundle.mainBundle objectForInfoDictionaryKey:@"com.wireguard.macos.app_id"];
-    NSString *appGroupId = [NSBundle.mainBundle objectForInfoDictionaryKey:@"com.wireguard.macos.app_group_id"];
+    NSString *appGroupId = [NSBundle.mainBundle objectForInfoDictionaryKey:@"app.wgnext.macos.app_group_id"];
     if (!appId || !appGroupId)
         return 1;
     NSURL *containerUrl = [[NSFileManager defaultManager] containerURLForSecurityApplicationGroupIdentifier:appGroupId];

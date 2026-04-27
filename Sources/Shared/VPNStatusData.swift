@@ -23,9 +23,9 @@ struct VPNStatusData: Codable {
 
     private static var userDefaults: UserDefaults? {
         #if os(iOS)
-        let key = "com.wireguard.ios.app_group_id"
+        let key = "app.wgnext.ios.app_group_id"
         #elseif os(macOS)
-        let key = "com.wireguard.macos.app_group_id"
+        let key = "app.wgnext.macos.app_group_id"
         #else
         #error("Unimplemented")
         #endif

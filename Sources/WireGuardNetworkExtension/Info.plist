@@ -29,11 +29,11 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
 	</dict>
-	<key>com.wireguard.ios.app_group_id</key>
+	<key>app.wgnext.ios.app_group_id</key>
 	<string>group.$(APP_ID_IOS)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-	<key>com.wireguard.macos.app_group_id</key>
+	<key>app.wgnext.macos.app_group_id</key>
 	<string>$(DEVELOPMENT_TEAM).group.$(APP_ID_MACOS)</string>
 </dict>
 </plist>
