@@ -298,6 +298,7 @@ extension TunnelsManager {
                 }
                 let newIndex = self.groupTunnels(kind: kind).firstIndex(of: tunnel)!
                 self.groupListDelegate?.groupMoved(kind: kind, from: oldIndex, to: newIndex)
+                OnDemandSuspensionStore.handleTunnelRenamed(from: oldName, to: spec.name)
             }
             self.groupListDelegate?.groupModified(kind: kind, at: self.groupTunnels(kind: kind).firstIndex(of: tunnel)!)
 
@@ -345,6 +346,7 @@ extension TunnelsManager {
                     }
                 }
             }
+            OnDemandSuspensionStore.remove(tunnel.name)
             completionHandler(nil)
         }
     }
