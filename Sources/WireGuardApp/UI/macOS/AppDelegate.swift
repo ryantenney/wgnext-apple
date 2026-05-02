@@ -193,6 +193,7 @@ extension AppDelegate {
         if let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
             appVersion += " (\(appBuild))"
         }
+        appVersion += " \(BUILD_COMMIT_HASH)"
         let appVersionString = [
             tr(format: "macAppVersion (%@)", appVersion),
             tr(format: "macGoBackendVersion (%@)", WIREGUARD_GO_VERSION)

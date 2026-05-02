@@ -1,5 +1,6 @@
 #include "../WireGuardKitC/WireGuardKitC.h"
 #include "wireguard-go-version.h"
+#include "build-info.h"
 
 #include "unzip.h"
 #include "zip.h"

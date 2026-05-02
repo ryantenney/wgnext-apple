@@ -157,6 +157,10 @@ targets:
           else
               echo "warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint"
           fi
+    postBuildScripts:
+      - name: Stamp Build Number
+        basedOnDependencyAnalysis: false
+        path: Sources/WireGuardApp/Config/stamp-build-number.sh
 
   WireGuardNetworkExtensionmacOS:
     type: app-extension
@@ -210,6 +214,10 @@ targets:
           else
               echo "warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint"
           fi
+    postBuildScripts:
+      - name: Stamp Build Number
+        basedOnDependencyAnalysis: false
+        path: Sources/WireGuardApp/Config/stamp-build-number.sh
 
   # ─── iOS app ──────────────────────────────────────────────────────────
 
@@ -287,6 +295,17 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           exec make -C "$PROJECT_DIR/Sources/WireGuardKitGo" version-header
+      - name: Generate Build Info Header
+        basedOnDependencyAnalysis: false
+        script: |
+          export PATH=${PATH}:/usr/local/bin:/opt/homebrew/bin
+          COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
+          mkdir -p "$CONFIGURATION_BUILD_DIR"
+          echo "#define BUILD_COMMIT_HASH \"$COMMIT\"" > "$CONFIGURATION_BUILD_DIR/build-info.h"
+    postBuildScripts:
+      - name: Stamp Build Number
+        basedOnDependencyAnalysis: false
+        path: Sources/WireGuardApp/Config/stamp-build-number.sh
 
   # ─── iOS widget extension (NEW) ──────────────────────────────────────
 
@@ -310,6 +329,10 @@ targets:
         CODE_SIGN_IDENTITY: iPhone Developer
         SKIP_INSTALL: YES
         SWIFT_OBJC_BRIDGING_HEADER: ""
+    postBuildScripts:
+      - name: Stamp Build Number
+        basedOnDependencyAnalysis: false
+        path: Sources/WireGuardApp/Config/stamp-build-number.sh
 
   # ─── macOS login item helper ──────────────────────────────────────────
 
@@ -327,6 +350,10 @@ targets:
         CODE_SIGN_IDENTITY: Mac Developer
         SKIP_INSTALL: YES
         SWIFT_OBJC_BRIDGING_HEADER: ""
+    postBuildScripts:
+      - name: Stamp Build Number
+        basedOnDependencyAnalysis: false
+        path: Sources/WireGuardApp/Config/stamp-build-number.sh
 
   # ─── macOS app ────────────────────────────────────────────────────────
 
@@ -406,7 +433,17 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           exec make -C "$PROJECT_DIR/Sources/WireGuardKitGo" version-header
+      - name: Generate Build Info Header
+        basedOnDependencyAnalysis: false
+        script: |
+          export PATH=${PATH}:/usr/local/bin:/opt/homebrew/bin
+          COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
+          mkdir -p "$CONFIGURATION_BUILD_DIR"
+          echo "#define BUILD_COMMIT_HASH \"$COMMIT\"" > "$CONFIGURATION_BUILD_DIR/build-info.h"
     postBuildScripts:
+      - name: Stamp Build Number
+        basedOnDependencyAnalysis: false
+        path: Sources/WireGuardApp/Config/stamp-build-number.sh
       - name: Embed Login Item Helper
         script: |
           mkdir -p "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems"

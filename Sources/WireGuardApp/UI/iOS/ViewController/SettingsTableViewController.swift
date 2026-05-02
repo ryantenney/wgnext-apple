@@ -43,7 +43,6 @@ class SettingsTableViewController: UITableViewController {
     ]
 
     let tunnelsManager: TunnelsManager?
-    var wireguardCaptionedImage: (view: UIView, size: CGSize)?
 
     init(tunnelsManager: TunnelsManager?) {
         self.tunnelsManager = tunnelsManager
@@ -66,34 +65,6 @@ class SettingsTableViewController: UITableViewController {
         tableView.register(KeyValueCell.self)
         tableView.register(ButtonCell.self)
         tableView.register(SwitchCell.self)
-
-        tableView.tableFooterView = UIImageView(image: UIImage(named: "wireguard.pdf"))
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        guard let logo = tableView.tableFooterView else { return }
-
-        let bottomPadding = max(tableView.layoutMargins.bottom, 10)
-        let fullHeight = max(tableView.contentSize.height, tableView.bounds.size.height - tableView.layoutMargins.top - bottomPadding)
-
-        let imageAspectRatio = logo.intrinsicContentSize.width / logo.intrinsicContentSize.height
-
-        var height = tableView.estimatedRowHeight * 1.5
-        var width = height * imageAspectRatio
-        let maxWidth = view.bounds.size.width - max(tableView.layoutMargins.left + tableView.layoutMargins.right, 20)
-        if width > maxWidth {
-            width = maxWidth
-            height = width / imageAspectRatio
-        }
-
-        let needsReload = height != logo.frame.height
-
-        logo.frame = CGRect(x: (view.bounds.size.width - width) / 2, y: fullHeight - height, width: width, height: height)
-
-        if needsReload {
-            tableView.tableFooterView = logo
-        }
     }
 
     @objc func doneTapped() {
@@ -246,6 +217,7 @@ extension SettingsTableViewController {
                 if let appBuild = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String {
                     appVersion += " (\(appBuild))"
                 }
+                appVersion += " \(BUILD_COMMIT_HASH)"
                 cell.value = appVersion
             } else if field == .goBackendVersion {
                 cell.value = WIREGUARD_GO_VERSION
