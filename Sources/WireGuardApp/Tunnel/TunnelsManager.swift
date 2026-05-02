@@ -45,6 +45,8 @@ class TunnelsManager {
         titGroupTunnels = allContainers.filter { $0.isTiTGroup }.sorted { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
         startObservingTunnelStatuses()
         startObservingTunnelConfigurations()
+        OnDemandSuspensionStore.cleanup(except: Set(allContainers.map { $0.name }))
+        restoreSuspendedOnDemandIfQuiescent()
     }
 
     static func create(completionHandler: @escaping (Result<TunnelsManager, TunnelsManagerError>) -> Void) {
@@ -370,6 +372,7 @@ class TunnelsManager {
                 self.tunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
                 let newIndex = self.tunnels.firstIndex(of: tunnel)!
                 self.tunnelsListDelegate?.tunnelMoved(from: oldIndex, to: newIndex)
+                OnDemandSuspensionStore.handleTunnelRenamed(from: oldName, to: tunnelName)
                 #if os(iOS)
                 RecentTunnelsTracker.handleTunnelRenamed(oldName: oldName, newName: tunnelName)
                 #endif
@@ -441,6 +444,7 @@ class TunnelsManager {
                 self.tunnels.remove(at: index)
                 self.tunnelsListDelegate?.tunnelRemoved(at: index, tunnel: tunnel)
             }
+            OnDemandSuspensionStore.remove(tunnel.name)
             completionHandler(nil)
 
             #if os(iOS)
@@ -646,11 +650,13 @@ class TunnelsManager {
             activateWaitingTunnelOnDeactivation(of: tunnelInOperation)
             if tunnelInOperation.status != .deactivating {
                 if tunnelInOperation.isActivateOnDemandEnabled {
+                    let suspendedName = tunnelInOperation.name
                     setOnDemandEnabled(false, on: tunnelInOperation) { [weak self] error in
                         guard error == nil else {
                             wg_log(.error, message: "Unable to activate tunnel '\(tunnel.name)' because on-demand could not be disabled on active tunnel '\(tunnel.name)'")
                             return
                         }
+                        OnDemandSuspensionStore.add(suspendedName)
                         self?.startDeactivation(of: tunnelInOperation)
                     }
                 } else {
@@ -697,6 +703,33 @@ class TunnelsManager {
         }
     }
 
+    /// If no tunnel is currently in any non-inactive state, re-enable on-demand
+    /// on every tunnel that was suspended for an override and clear those
+    /// suspension markers. Called from `init` and after a tunnel disconnects.
+    /// See `DESIGN-multiple-on-demand-tunnels.md` for the full lifecycle.
+    private func restoreSuspendedOnDemandIfQuiescent() {
+        guard OnDemandSuspensionStore.hasSuspensions else { return }
+        let isQuiescent = allTunnels.allSatisfy { $0.status == .inactive }
+        guard isQuiescent else { return }
+
+        for name in OnDemandSuspensionStore.suspendedTunnelNames {
+            guard let tunnel = allTunnels.first(where: { $0.name == name }) else {
+                OnDemandSuspensionStore.remove(name)
+                continue
+            }
+            guard tunnel.hasOnDemandRules else {
+                OnDemandSuspensionStore.remove(name)
+                continue
+            }
+            OnDemandSuspensionStore.remove(name)
+            setOnDemandEnabled(true, on: tunnel) { error in
+                if let error = error {
+                    wg_log(.error, message: "Restore on-demand for '\(name)' failed: \(error)")
+                }
+            }
+        }
+    }
+
     private func startObservingTunnelStatuses() {
         statusObservationToken = NotificationCenter.default.observe(name: .NEVPNStatusDidChange, object: nil, queue: OperationQueue.main) { [weak self] statusChangeNotification in
             guard let self = self,
@@ -737,6 +770,7 @@ class TunnelsManager {
                 self.fetchPublicIPIfEnabled()
             } else if session.status == .disconnected {
                 self.clearDiscoveredIP()
+                self.restoreSuspendedOnDemandIfQuiescent()
             }
 
             #if os(iOS)
