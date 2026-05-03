@@ -142,11 +142,14 @@ class GroupDetailBaseTableViewController: UITableViewController {
 
             let status = tunnel.status
             let isOnDemandEngaged = tunnel.isActivateOnDemandEnabled
+            let isSuspended = tunnel.isOnDemandSuspended
 
-            let isSwitchOn = (status == .activating || status == .active || isOnDemandEngaged)
+            let isSwitchOn = (status == .activating || status == .active || isOnDemandEngaged || isSuspended)
             cell.switchView.setOn(isSwitchOn, animated: true)
 
-            if isOnDemandEngaged && !(status == .activating || status == .active) {
+            if isSuspended && !(status == .activating || status == .active) {
+                cell.switchView.onTintColor = UIColor.systemGray
+            } else if isOnDemandEngaged && !(status == .activating || status == .active) {
                 cell.switchView.onTintColor = UIColor.systemYellow
             } else {
                 cell.switchView.onTintColor = UIColor.systemGreen
@@ -187,6 +190,9 @@ class GroupDetailBaseTableViewController: UITableViewController {
             update(cell: cell, with: tunnel)
         }
         cell.hasOnDemandRulesObservationToken = tunnel.observe(\.hasOnDemandRules) { [weak cell] tunnel, _ in
+            update(cell: cell, with: tunnel)
+        }
+        cell.isOnDemandSuspendedObservationToken = tunnel.observe(\.isOnDemandSuspended) { [weak cell] tunnel, _ in
             update(cell: cell, with: tunnel)
         }
 

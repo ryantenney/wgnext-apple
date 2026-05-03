@@ -23,6 +23,9 @@ class FailoverGroupCell: UITableViewCell {
             hasOnDemandRulesObservationToken = tunnel?.observe(\.hasOnDemandRules) { [weak self] tunnel, _ in
                 self?.update(from: tunnel, animated: true)
             }
+            isOnDemandSuspendedObservationToken = tunnel?.observe(\.isOnDemandSuspended) { [weak self] tunnel, _ in
+                self?.update(from: tunnel, animated: true)
+            }
         }
     }
 
@@ -81,6 +84,7 @@ class FailoverGroupCell: UITableViewCell {
     private var statusObservationToken: NSKeyValueObservation?
     private var isOnDemandEnabledObservationToken: NSKeyValueObservation?
     private var hasOnDemandRulesObservationToken: NSKeyValueObservation?
+    private var isOnDemandSuspendedObservationToken: NSKeyValueObservation?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -132,6 +136,7 @@ class FailoverGroupCell: UITableViewCell {
         statusObservationToken = nil
         isOnDemandEnabledObservationToken = nil
         hasOnDemandRulesObservationToken = nil
+        isOnDemandSuspendedObservationToken = nil
     }
 
     @objc private func switchToggled() {
@@ -182,17 +187,20 @@ class FailoverGroupCell: UITableViewCell {
 
         let status = tunnel.status
         let isOnDemandEngaged = tunnel.isActivateOnDemandEnabled
+        let isSuspended = tunnel.isOnDemandSuspended
 
-        let shouldSwitchBeOn = (status != .deactivating && status != .inactive) || isOnDemandEngaged
+        let shouldSwitchBeOn = (status != .deactivating && status != .inactive) || isOnDemandEngaged || isSuspended
         statusSwitch.setOn(shouldSwitchBeOn, animated: animated)
 
-        if isOnDemandEngaged && !(status == .activating || status == .active) {
+        if isSuspended && !(status == .activating || status == .active) {
+            statusSwitch.onTintColor = .systemGray
+        } else if isOnDemandEngaged && !(status == .activating || status == .active) {
             statusSwitch.onTintColor = .systemYellow
         } else {
             statusSwitch.onTintColor = .systemGreen
         }
 
-        if isOnDemandEngaged {
+        if isOnDemandEngaged || isSuspended {
             onDemandLabel.text = tr("tunnelListCaptionOnDemand")
             onDemandLabel.isHidden = false
         } else {

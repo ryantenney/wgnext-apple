@@ -515,6 +515,11 @@ class TunnelsManager {
     }
 
     func setOnDemandEnabled(_ isOnDemandEnabled: Bool, on tunnel: TunnelContainer, completionHandler: @escaping (TunnelsManagerError?) -> Void) {
+        // A user-initiated on-demand toggle takes explicit control: clear any
+        // suspension marker we were holding for this tunnel. Internal callers
+        // that intend to re-suspend (e.g. startActivation) re-add to the store
+        // after this returns.
+        clearSuspension(for: tunnel)
         let tunnelProviderManager = tunnel.tunnelProvider
         let isCurrentlyEnabled = (tunnelProviderManager.isOnDemandEnabled && tunnelProviderManager.isEnabled)
         guard isCurrentlyEnabled != isOnDemandEnabled else {
@@ -644,19 +649,30 @@ class TunnelsManager {
             alreadyWaitingTunnel.status = .inactive
         }
 
+        // Suspend any other tunnel that has on-demand armed but is currently
+        // inactive — iOS quietly clears its isOnDemandEnabled when we start a
+        // manual tunnel, so we record it here to restore on quiescence.
+        for otherTunnel in allTunnels where otherTunnel !== tunnel
+            && otherTunnel.status == .inactive
+            && otherTunnel.isActivateOnDemandEnabled {
+            setOnDemandEnabled(false, on: otherTunnel) { [weak self, weak otherTunnel] error in
+                guard error == nil, let otherTunnel = otherTunnel else { return }
+                self?.markSuspended(otherTunnel)
+            }
+        }
+
         if let tunnelInOperation = allTunnels.first(where: { $0.status != .inactive }) {
             wg_log(.info, message: "Tunnel '\(tunnel.name)' waiting for deactivation of '\(tunnelInOperation.name)'")
             tunnel.status = .waiting
             activateWaitingTunnelOnDeactivation(of: tunnelInOperation)
             if tunnelInOperation.status != .deactivating {
                 if tunnelInOperation.isActivateOnDemandEnabled {
-                    let suspendedName = tunnelInOperation.name
-                    setOnDemandEnabled(false, on: tunnelInOperation) { [weak self] error in
-                        guard error == nil else {
+                    setOnDemandEnabled(false, on: tunnelInOperation) { [weak self, weak tunnelInOperation] error in
+                        guard error == nil, let tunnelInOperation = tunnelInOperation else {
                             wg_log(.error, message: "Unable to activate tunnel '\(tunnel.name)' because on-demand could not be disabled on active tunnel '\(tunnel.name)'")
                             return
                         }
-                        OnDemandSuspensionStore.add(suspendedName)
+                        self?.markSuspended(tunnelInOperation)
                         self?.startDeactivation(of: tunnelInOperation)
                     }
                 } else {
@@ -719,15 +735,27 @@ class TunnelsManager {
             }
             guard tunnel.hasOnDemandRules else {
                 OnDemandSuspensionStore.remove(name)
+                tunnel.isOnDemandSuspended = false
                 continue
             }
-            OnDemandSuspensionStore.remove(name)
+            // setOnDemandEnabled clears the suspension internally.
             setOnDemandEnabled(true, on: tunnel) { error in
                 if let error = error {
                     wg_log(.error, message: "Restore on-demand for '\(name)' failed: \(error)")
                 }
             }
         }
+    }
+
+    private func markSuspended(_ tunnel: TunnelContainer) {
+        OnDemandSuspensionStore.add(tunnel.name)
+        tunnel.isOnDemandSuspended = true
+    }
+
+    private func clearSuspension(for tunnel: TunnelContainer) {
+        guard tunnel.isOnDemandSuspended else { return }
+        OnDemandSuspensionStore.remove(tunnel.name)
+        tunnel.isOnDemandSuspended = false
     }
 
     private func startObservingTunnelStatuses() {
@@ -899,6 +927,7 @@ class TunnelContainer: NSObject {
 
     @objc dynamic var isActivateOnDemandEnabled: Bool
     @objc dynamic var hasOnDemandRules: Bool
+    @objc dynamic var isOnDemandSuspended: Bool
 
     var isAttemptingActivation = false {
         didSet {
@@ -977,11 +1006,13 @@ class TunnelContainer: NSObject {
     #endif
 
     init(tunnel: NETunnelProviderManager) {
-        name = tunnel.localizedDescription ?? "Unnamed"
+        let resolvedName = tunnel.localizedDescription ?? "Unnamed"
+        name = resolvedName
         let status = TunnelStatus(from: tunnel.connection.status)
         self.status = status
         isActivateOnDemandEnabled = tunnel.isOnDemandEnabled && tunnel.isEnabled
         hasOnDemandRules = !(tunnel.onDemandRules ?? []).isEmpty
+        isOnDemandSuspended = OnDemandSuspensionStore.suspendedTunnelNames.contains(resolvedName)
         tunnelProvider = tunnel
         super.init()
     }

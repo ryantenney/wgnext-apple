@@ -24,6 +24,9 @@ class TunnelListCell: UITableViewCell {
             hasOnDemandRulesObservationToken = tunnel?.observe(\.hasOnDemandRules) { [weak self] tunnel, _ in
                 self?.update(from: tunnel, animated: true)
             }
+            isOnDemandSuspendedObservationToken = tunnel?.observe(\.isOnDemandSuspended) { [weak self] tunnel, _ in
+                self?.update(from: tunnel, animated: true)
+            }
         }
     }
     var onSwitchToggled: ((Bool) -> Void)?
@@ -59,6 +62,7 @@ class TunnelListCell: UITableViewCell {
     private var statusObservationToken: NSKeyValueObservation?
     private var isOnDemandEnabledObservationToken: NSKeyValueObservation?
     private var hasOnDemandRulesObservationToken: NSKeyValueObservation?
+    private var isOnDemandSuspendedObservationToken: NSKeyValueObservation?
 
     private var subTitleLabelBottomConstraint: NSLayoutConstraint?
     private var nameLabelBottomConstraint: NSLayoutConstraint?
@@ -126,18 +130,21 @@ class TunnelListCell: UITableViewCell {
         }
         let status = tunnel.status
         let isOnDemandEngaged = tunnel.isActivateOnDemandEnabled
+        let isSuspended = tunnel.isOnDemandSuspended
 
-        let shouldSwitchBeOn = ((status != .deactivating && status != .inactive) || isOnDemandEngaged)
+        let shouldSwitchBeOn = ((status != .deactivating && status != .inactive) || isOnDemandEngaged || isSuspended)
         statusSwitch.setOn(shouldSwitchBeOn, animated: true)
 
-        if isOnDemandEngaged && !(status == .activating || status == .active) {
+        if isSuspended && !(status == .activating || status == .active) {
+            statusSwitch.onTintColor = UIColor.systemGray
+        } else if isOnDemandEngaged && !(status == .activating || status == .active) {
             statusSwitch.onTintColor = UIColor.systemYellow
         } else {
             statusSwitch.onTintColor = UIColor.systemGreen
         }
 
         if tunnel.hasOnDemandRules {
-            onDemandLabel.text = isOnDemandEngaged ? tr("tunnelListCaptionOnDemand") : ""
+            onDemandLabel.text = (isOnDemandEngaged || isSuspended) ? tr("tunnelListCaptionOnDemand") : ""
             busyIndicator.stopAnimating()
             statusSwitch.isUserInteractionEnabled = true
         } else {
