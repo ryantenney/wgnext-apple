@@ -224,7 +224,9 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
             return .active
         }
         if let hotSpareIndex = state["hotSpareConfigIndex"] as? Int, hotSpareIndex == index {
-            if let age = state["hotSpareHandshakeAge"] as? Double, age < settings.trafficTimeout { return .hotSpareReady }
+            // WireGuard rejects session reuse after REJECT_AFTER_TIME (180s); anything
+            // fresher than that is still promotable without a fresh handshake.
+            if let age = state["hotSpareHandshakeAge"] as? Double, age < 180 { return .hotSpareReady }
             let isActive = state["hotSpareActive"] as? Bool ?? false
             return isActive ? .hotSpareWaiting : .idle
         }
@@ -378,7 +380,7 @@ extension FailoverGroupDetailTableViewController {
             if let index = state["hotSpareConfigIndex"] as? Int {
                 let name = index < tunnelNames.count ? tunnelNames[index] : "config #\(index)"
                 if let age = state["hotSpareHandshakeAge"] as? Double {
-                    if age < settings.trafficTimeout {
+                    if age < 180 {
                         return "\(name): Connected (\(Int(age))s ago)"
                     } else {
                         return "\(name): Stale handshake (\(Int(age))s ago)"

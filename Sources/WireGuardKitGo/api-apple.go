@@ -23,6 +23,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -523,16 +524,21 @@ func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
 	return i
 }
 
-// injectKeepalive ensures every peer section has a persistent_keepalive_interval.
-// If a peer already has one, it is left unchanged. The override value is in seconds.
+// injectKeepalive ensures every peer section has a persistent_keepalive_interval
+// at most `seconds`. If the peer already has a smaller positive value, that value
+// is preserved. If the peer is missing the line, has it set to 0, or has it set
+// to a larger value, it is replaced with `seconds`.
+//
+// The probe needs at least one keepalive within a few seconds to trigger the
+// initial handshake — without traffic flowing through the null tun, keepalive
+// is the only thing that drives wireguard-go to start a session.
 func injectKeepalive(uapi string, seconds int) string {
 	var result strings.Builder
 	inPeer := false
 	hasKeepalive := false
 
 	for _, line := range strings.Split(uapi, "\n") {
-		if line == "public_key=" || strings.HasPrefix(line, "public_key=") && len(line) > len("public_key=") {
-			// Flush keepalive for previous peer if needed
+		if strings.HasPrefix(line, "public_key=") {
 			if inPeer && !hasKeepalive {
 				result.WriteString(fmt.Sprintf("persistent_keepalive_interval=%d\n", seconds))
 			}
@@ -540,14 +546,20 @@ func injectKeepalive(uapi string, seconds int) string {
 			hasKeepalive = false
 		}
 		if strings.HasPrefix(line, "persistent_keepalive_interval=") {
+			value, err := strconv.Atoi(strings.TrimPrefix(line, "persistent_keepalive_interval="))
+			chosen := seconds
+			if err == nil && value > 0 && value < seconds {
+				chosen = value
+			}
+			result.WriteString(fmt.Sprintf("persistent_keepalive_interval=%d\n", chosen))
 			hasKeepalive = true
+			continue
 		}
 		if line != "" {
 			result.WriteString(line)
 			result.WriteByte('\n')
 		}
 	}
-	// Flush last peer
 	if inPeer && !hasKeepalive {
 		result.WriteString(fmt.Sprintf("persistent_keepalive_interval=%d\n", seconds))
 	}

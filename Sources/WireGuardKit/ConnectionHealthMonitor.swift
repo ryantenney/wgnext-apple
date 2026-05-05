@@ -673,7 +673,12 @@ public class ConnectionHealthMonitor {
                                 let age = Self.parseLastHandshakeAge(from: configString)
                                 if age < .infinity {
                                     state["hotSpareHandshakeAge"] = age
+                                } else {
+                                    let redacted = Self.redactSecrets(from: configString)
+                                    self.logHandler(.verbose, "Failover: hot spare probe (handle \(handle), index \(hotSpareIndex)) has no handshake. UAPI:\n\(redacted)")
                                 }
+                            } else {
+                                self.logHandler(.verbose, "Failover: hot spare probe (handle \(handle), index \(hotSpareIndex)) returned no UAPI config")
                             }
                             completionHandler(state)
                         }
@@ -713,6 +718,15 @@ public class ConnectionHealthMonitor {
         }
 
         return (totalTx, totalRx)
+    }
+
+    /// Strip private_key / preshared_key values from a UAPI dump for safe logging.
+    static func redactSecrets(from uapiConfig: String) -> String {
+        return uapiConfig.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
+            if line.hasPrefix("private_key=") { return "private_key=<redacted>" }
+            if line.hasPrefix("preshared_key=") { return "preshared_key=<redacted>" }
+            return String(line)
+        }.joined(separator: "\n")
     }
 
     /// Parse the age of the most recent handshake from a UAPI runtime config string.
