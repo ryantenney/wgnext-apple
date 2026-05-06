@@ -74,6 +74,12 @@ public class WireGuardAdapter {
     /// Stored OUTER interface IP string for TiT restart.
     private var titOuterIfaceIP: String?
 
+    /// Sibling failover endpoints whose IPs should be added to `excludedRoutes`
+    /// so probe and active traffic destined for *other* failover servers bypasses
+    /// the active utun. Updated on every `start`/`update`. See
+    /// `docs/probe-routing-bypass.md`.
+    private var excludedEndpoints: [Endpoint] = []
+
     /// Tunnel device file descriptor.
     private var tunnelFileDescriptor: Int32? {
         var ctlInfo = ctl_info()
@@ -233,7 +239,7 @@ public class WireGuardAdapter {
     /// - Parameters:
     ///   - tunnelConfiguration: tunnel configuration.
     ///   - completionHandler: completion handler.
-    public func start(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
+    public func start(tunnelConfiguration: TunnelConfiguration, excludedEndpoints: [Endpoint] = [], completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
         workQueue.async {
             guard case .stopped = self.state else {
                 completionHandler(.invalidState)
@@ -247,6 +253,7 @@ public class WireGuardAdapter {
             networkMonitor.start(queue: self.workQueue)
 
             do {
+                self.excludedEndpoints = excludedEndpoints
                 let settingsGenerator = try self.makeSettingsGenerator(with: tunnelConfiguration)
                 try self.setNetworkSettings(settingsGenerator.generateNetworkSettings())
 
@@ -375,7 +382,7 @@ public class WireGuardAdapter {
     /// - Parameters:
     ///   - tunnelConfiguration: tunnel configuration.
     ///   - completionHandler: completion handler.
-    public func update(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
+    public func update(tunnelConfiguration: TunnelConfiguration, excludedEndpoints: [Endpoint] = [], completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
         workQueue.async {
             if case .stopped = self.state {
                 completionHandler(.invalidState)
@@ -391,6 +398,7 @@ public class WireGuardAdapter {
             }
 
             do {
+                self.excludedEndpoints = excludedEndpoints
                 let settingsGenerator = try self.makeSettingsGenerator(with: tunnelConfiguration)
                 try self.setNetworkSettings(settingsGenerator.generateNetworkSettings())
 
@@ -505,8 +513,10 @@ public class WireGuardAdapter {
     ///   - tunnelConfiguration: the configuration that the probe was started with
     ///   - completionHandler: called with nil on success, or an error
     public func promoteProbe(probeHandle: Int32, tunnelConfiguration: TunnelConfiguration,
+                             excludedEndpoints: [Endpoint] = [],
                              completionHandler: @escaping (Error?) -> Void) {
         workQueue.async {
+            self.excludedEndpoints = excludedEndpoints
             // Must have a running tunnel to promote into
             guard case .started(let oldHandle, _) = self.state else {
                 if case .startedTiT = self.state {
@@ -676,8 +686,24 @@ public class WireGuardAdapter {
     private func makeSettingsGenerator(with tunnelConfiguration: TunnelConfiguration) throws -> PacketTunnelSettingsGenerator {
         return PacketTunnelSettingsGenerator(
             tunnelConfiguration: tunnelConfiguration,
-            resolvedEndpoints: try self.resolvePeers(for: tunnelConfiguration)
+            resolvedEndpoints: try self.resolvePeers(for: tunnelConfiguration),
+            excludedEndpoints: self.resolveExcludedEndpoints()
         )
+    }
+
+    /// Resolve the stored sibling endpoints to IPs. Hostnames that fail to resolve are
+    /// dropped with a log entry — this leaves the corresponding sibling without a route
+    /// exception, but doesn't fail the tunnel.
+    private func resolveExcludedEndpoints() -> [Endpoint] {
+        var resolved: [Endpoint] = []
+        for endpoint in excludedEndpoints {
+            do {
+                resolved.append(try endpoint.withReresolvedIP())
+            } catch {
+                logHandler(.error, "Failed to resolve sibling failover endpoint \(endpoint.stringRepresentation): \(error). Probe traffic for this endpoint will route through the active tunnel until next re-resolution.")
+            }
+        }
+        return resolved
     }
 
     /// Log DNS resolution results.

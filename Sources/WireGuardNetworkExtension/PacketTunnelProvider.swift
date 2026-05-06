@@ -115,8 +115,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             tunnelConfiguration = config
         }
 
+        // Collect sibling failover endpoints (every config in the group except the primary)
+        // so the adapter installs them as `excludedRoutes` — keeps probe traffic and any
+        // direct hits to dormant failover servers off the active utun. See
+        // `docs/probe-routing-bypass.md`.
+        let excludedEndpoints = Self.failoverSiblingEndpoints(configs: failoverConfigs, activeIndex: 0)
+
         // Start the tunnel
-        adapter.start(tunnelConfiguration: tunnelConfiguration) { adapterError in
+        adapter.start(tunnelConfiguration: tunnelConfiguration, excludedEndpoints: excludedEndpoints) { adapterError in
             guard let adapterError = adapterError else {
                 wg_log(.info, message: "Tunnel interface is \(self.adapter.interfaceName ?? "unknown")")
                 self.startHealthMonitorIfNeeded(providerConfig: providerConfig)
@@ -533,6 +539,22 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
+    /// Endpoints from every failover config except the one at `activeIndex`.
+    /// Returned as Endpoint values (potentially with hostname `host`); the adapter
+    /// re-resolves them to IPs before installing as `excludedRoutes`.
+    private static func failoverSiblingEndpoints(configs: [TunnelConfiguration], activeIndex: Int) -> [Endpoint] {
+        guard configs.count > 1 else { return [] }
+        var endpoints: [Endpoint] = []
+        for (idx, config) in configs.enumerated() where idx != activeIndex {
+            for peer in config.peers {
+                if let endpoint = peer.endpoint {
+                    endpoints.append(endpoint)
+                }
+            }
+        }
+        return endpoints
+    }
+
     private func startHealthMonitorIfNeeded(providerConfig: [String: Any]?) {
         guard failoverConfigs.count > 1 else { return }
 
@@ -682,8 +704,8 @@ extension WireGuardLogLevel {
 }
 
 extension WireGuardAdapter: FailoverAdapterProtocol {
-    public func update(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (Error?) -> Void) {
-        update(tunnelConfiguration: tunnelConfiguration) { (error: WireGuardAdapterError?) in
+    public func update(tunnelConfiguration: TunnelConfiguration, excludedEndpoints: [Endpoint], completionHandler: @escaping (Error?) -> Void) {
+        update(tunnelConfiguration: tunnelConfiguration, excludedEndpoints: excludedEndpoints) { (error: WireGuardAdapterError?) in
             completionHandler(error)
         }
     }

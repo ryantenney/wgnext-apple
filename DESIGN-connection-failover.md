@@ -364,3 +364,9 @@ To enable manually, add `FAILOVER_TESTING` to `SWIFT_ACTIVE_COMPILATION_CONDITIO
 - **macOS UI**: The health monitor and extension logic work on macOS, but no macOS-specific UI has been built yet (no sidebar integration, no status bar changes).
 - **Battery impact measurement**: The health monitor is lightweight (one UAPI query every 10s), but no formal power profiling has been done.
 - **Automated tests**: No test suite. The `MockTunnels` simulator infrastructure doesn't run the network extension, so the failover engine can't be tested there. Real-device testing with the `FAILOVER_TESTING` debug controls is the current approach.
+- **Probe routing bypass**: Probe and failback-probe sockets currently route through the active utun when `AllowedIPs = 0.0.0.0/0`, which breaks them as reachability tests for sibling endpoints and pollutes the active tunnel's tx/rx counters. See [docs/probe-routing-bypass.md](docs/probe-routing-bypass.md) for the chosen fix (per-IP exclusion via `excludedRoutes`) and its limitations.
+
+## Related Documents
+
+- [DESIGN-background-probes-and-hot-spares.md](DESIGN-background-probes-and-hot-spares.md) — non-disruptive failback probes and the hot spare promotion mechanism.
+- [docs/probe-routing-bypass.md](docs/probe-routing-bypass.md) — why probe traffic must bypass the active tunnel and how we achieve that.

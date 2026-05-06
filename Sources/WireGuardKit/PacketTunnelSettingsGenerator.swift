@@ -15,10 +15,18 @@ typealias EndpointResolutionResult = Result<(Endpoint, Endpoint), DNSResolutionE
 class PacketTunnelSettingsGenerator {
     let tunnelConfiguration: TunnelConfiguration
     let resolvedEndpoints: [Endpoint?]
+    /// Already-resolved IP endpoints to install as `excludedRoutes` on the tunnel's
+    /// network settings. Used by failover groups to keep traffic destined for sibling
+    /// failover endpoints (hot spare probe target, other configs in the group) on the
+    /// underlying physical interface instead of recursing through utun. Endpoints with
+    /// `.name` hosts are ignored — caller must pre-resolve. See
+    /// `docs/probe-routing-bypass.md`.
+    let excludedEndpoints: [Endpoint]
 
-    init(tunnelConfiguration: TunnelConfiguration, resolvedEndpoints: [Endpoint?]) {
+    init(tunnelConfiguration: TunnelConfiguration, resolvedEndpoints: [Endpoint?], excludedEndpoints: [Endpoint] = []) {
         self.tunnelConfiguration = tunnelConfiguration
         self.resolvedEndpoints = resolvedEndpoints
+        self.excludedEndpoints = excludedEndpoints
     }
 
     func endpointUapiConfiguration() -> (String, [EndpointResolutionResult?]) {
@@ -115,13 +123,20 @@ class PacketTunnelSettingsGenerator {
 
         let (ipv4Addresses, ipv6Addresses) = addresses()
         let (ipv4IncludedRoutes, ipv6IncludedRoutes) = includedRoutes()
+        let (ipv4ExcludedRoutes, ipv6ExcludedRoutes) = excludedSiblingRoutes()
 
         let ipv4Settings = NEIPv4Settings(addresses: ipv4Addresses.map { $0.destinationAddress }, subnetMasks: ipv4Addresses.map { $0.destinationSubnetMask })
         ipv4Settings.includedRoutes = ipv4IncludedRoutes
+        if !ipv4ExcludedRoutes.isEmpty {
+            ipv4Settings.excludedRoutes = ipv4ExcludedRoutes
+        }
         networkSettings.ipv4Settings = ipv4Settings
 
         let ipv6Settings = NEIPv6Settings(addresses: ipv6Addresses.map { $0.destinationAddress }, networkPrefixLengths: ipv6Addresses.map { $0.destinationNetworkPrefixLength })
         ipv6Settings.includedRoutes = ipv6IncludedRoutes
+        if !ipv6ExcludedRoutes.isEmpty {
+            ipv6Settings.excludedRoutes = ipv6ExcludedRoutes
+        }
         networkSettings.ipv6Settings = ipv6Settings
 
         return networkSettings
@@ -171,6 +186,24 @@ class PacketTunnelSettingsGenerator {
             }
         }
         return (ipv4IncludedRoutes, ipv6IncludedRoutes)
+    }
+
+    private func excludedSiblingRoutes() -> ([NEIPv4Route], [NEIPv6Route]) {
+        var ipv4 = [NEIPv4Route]()
+        var ipv6 = [NEIPv6Route]()
+        for endpoint in excludedEndpoints {
+            switch endpoint.host {
+            case .ipv4(let address):
+                ipv4.append(NEIPv4Route(destinationAddress: "\(address)", subnetMask: "255.255.255.255"))
+            case .ipv6(let address):
+                ipv6.append(NEIPv6Route(destinationAddress: "\(address)", networkPrefixLength: NSNumber(value: 128)))
+            case .name:
+                continue
+            @unknown default:
+                continue
+            }
+        }
+        return (ipv4, ipv6)
     }
 
     private class func reresolveEndpoint(endpoint: Endpoint) -> EndpointResolutionResult {

@@ -272,6 +272,12 @@ Each WireGuard device binds its own UDP port (wireguard-go picks an ephemeral po
 
 The remote WireGuard server will see two concurrent sessions from different source ports with different public keys (each failover config has its own keypair). The probe and active tunnel are completely independent peers from the server's perspective.
 
+### Probe Routing vs. the Active Tunnel
+
+A probe's UDP socket is bound to no specific interface (`conn.NewStdNetBind()`), so the kernel's default route applies. When the active tunnel is up with `AllowedIPs = 0.0.0.0/0`, that default route is utun — the probe's keepalive and handshake packets get encapsulated into the active tunnel and sent to *its* server, not directly to the probe's target. This breaks the probe as a reachability test and pollutes the active tunnel's tx/rx counters with probe traffic.
+
+NEPacketTunnelProvider's automatic routing exception only covers the active tunnel's own server endpoint, not sibling failover endpoints. We bypass this manually — see [docs/probe-routing-bypass.md](docs/probe-routing-bypass.md) for the two approaches considered (per-socket `IP_BOUND_IF` vs. per-IP `excludedRoutes`), the chosen approach, and its limitations.
+
 ### Interaction with TiT
 
 Probes use real UDP sockets (not PipedBind), same as TiT's OUTER device. The probe is testing reachability to a different server, not routing through the TiT pipe. Probes work identically regardless of whether the active tunnel is regular or TiT.

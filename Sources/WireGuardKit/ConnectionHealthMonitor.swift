@@ -7,7 +7,7 @@ import Foundation
 /// `WireGuardAdapter` conforms to this protocol.
 public protocol FailoverAdapterProtocol: AnyObject {
     func getRuntimeConfiguration(completionHandler: @escaping (String?) -> Void)
-    func update(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (Error?) -> Void)
+    func update(tunnelConfiguration: TunnelConfiguration, excludedEndpoints: [Endpoint], completionHandler: @escaping (Error?) -> Void)
 
     /// Start a background probe for the given tunnel configuration.
     /// The probe establishes a WireGuard session (handshake) without routing traffic.
@@ -26,6 +26,7 @@ public protocol FailoverAdapterProtocol: AnyObject {
     /// Promote a probe to become the active tunnel, preserving its WireGuard session.
     /// Swaps the probe's null tun for the real utun fd — no re-handshake.
     func promoteProbe(probeHandle: Int32, tunnelConfiguration: TunnelConfiguration,
+                      excludedEndpoints: [Endpoint],
                       completionHandler: @escaping (Error?) -> Void)
 }
 
@@ -295,11 +296,28 @@ public class ConnectionHealthMonitor {
 
     // MARK: - Config Switching
 
+    /// Endpoints belonging to every config in the failover group *except* the one
+    /// at `activeIdx`. Threaded through `adapter.update`/`promoteProbe` so the
+    /// network-extension layer can install matching `excludedRoutes` and keep
+    /// probe traffic off the active utun. See `docs/probe-routing-bypass.md`.
+    private func siblingEndpoints(forActiveIndex activeIdx: Int) -> [Endpoint] {
+        var endpoints: [Endpoint] = []
+        for (idx, config) in configurations.enumerated() where idx != activeIdx {
+            for peer in config.peers {
+                if let endpoint = peer.endpoint {
+                    endpoints.append(endpoint)
+                }
+            }
+        }
+        return endpoints
+    }
+
     private func switchToConfig(at index: Int) {
         guard let adapter = adapter else { return }
 
         let config = configurations[index]
-        adapter.update(tunnelConfiguration: config) { [weak self] (error: Error?) in
+        let siblings = siblingEndpoints(forActiveIndex: index)
+        adapter.update(tunnelConfiguration: config, excludedEndpoints: siblings) { [weak self] (error: Error?) in
             guard let self = self else { return }
             self.workQueue.async {
                 if let error = error {
@@ -416,13 +434,14 @@ public class ConnectionHealthMonitor {
                     // Clear the failback handle so stopFailbackProbe doesn't kill it during promotion
                     self.failbackProbeHandle = nil
 
-                    adapter.promoteProbe(probeHandle: handle, tunnelConfiguration: self.configurations[0]) { [weak self] (error: Error?) in
+                    let promotionSiblings = self.siblingEndpoints(forActiveIndex: 0)
+                    adapter.promoteProbe(probeHandle: handle, tunnelConfiguration: self.configurations[0], excludedEndpoints: promotionSiblings) { [weak self] (error: Error?) in
                         guard let self = self else { return }
                         self.workQueue.async {
                             if let error = error {
                                 self.logHandler(.error, "Failover: failback probe promotion failed: \(error), falling back to config swap")
                                 // Fall back to a regular config swap
-                                adapter.update(tunnelConfiguration: self.configurations[0]) { [weak self] (_: Error?) in
+                                adapter.update(tunnelConfiguration: self.configurations[0], excludedEndpoints: self.siblingEndpoints(forActiveIndex: 0)) { [weak self] (_: Error?) in
                                     guard let self = self else { return }
                                     self.workQueue.async {
                                         self.activeIndex = 0
@@ -479,7 +498,7 @@ public class ConnectionHealthMonitor {
         logHandler(.verbose, "Failover: probing primary '\(primaryName)' for recovery (legacy)")
 
         // Switch to primary
-        adapter.update(tunnelConfiguration: configurations[0]) { [weak self] (error: Error?) in
+        adapter.update(tunnelConfiguration: configurations[0], excludedEndpoints: siblingEndpoints(forActiveIndex: 0)) { [weak self] (error: Error?) in
             guard let self = self else { return }
             self.workQueue.async {
                 guard error == nil else {
@@ -527,7 +546,7 @@ public class ConnectionHealthMonitor {
                     // Primary still unhealthy — revert
                     let fallbackName = self.configurations[savedFallbackIndex].name ?? "config #\(savedFallbackIndex)"
                     self.logHandler(.verbose, "Failover: primary still unhealthy (\(Int(handshakeAge))s), reverting to '\(fallbackName)'")
-                    adapter.update(tunnelConfiguration: self.configurations[savedFallbackIndex]) { [weak self] (_: Error?) in
+                    adapter.update(tunnelConfiguration: self.configurations[savedFallbackIndex], excludedEndpoints: self.siblingEndpoints(forActiveIndex: savedFallbackIndex)) { [weak self] (_: Error?) in
                         guard let self = self else { return }
                         self.workQueue.async {
                             self.lastTxBytes = 0
@@ -608,7 +627,8 @@ public class ConnectionHealthMonitor {
         hotSpareConfigIndex = nil
 
         // Promote: swaps null tun → real utun inside the probe device
-        adapter.promoteProbe(probeHandle: handle, tunnelConfiguration: config) { [weak self] (error: Error?) in
+        let siblings = siblingEndpoints(forActiveIndex: targetIndex)
+        adapter.promoteProbe(probeHandle: handle, tunnelConfiguration: config, excludedEndpoints: siblings) { [weak self] (error: Error?) in
             guard let self = self else { return }
             self.workQueue.async {
                 if let error = error {
