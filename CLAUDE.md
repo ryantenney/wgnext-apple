@@ -135,6 +135,10 @@ See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
 ### Debug Testing
 Build with `FAILOVER_TESTING` flag (`fastlane ios device_failover`) to get Force Failover/Failback buttons in the detail view. All debug code is `#if FAILOVER_TESTING` gated.
 
+## Captive Portal Handling
+
+See `DESIGN-captive-portal-handling.md`. On-demand Connect rules carry a captive-check `probeURL` so on-demand doesn't block portal sign-in. `Sources/WireGuardKit/CaptivePortalDetector.swift` probes the underlying network from the extension (provider-process traffic bypasses the utun). When the underlying network is captive/offline, `ConnectionHealthMonitor` enters a `networkBlocked` holding state (no config cycling, probes suspended, detector polled) instead of failing over, and reports `networkBlocked`/`captivePortalDetected` via the type-1 IPC state message. Toggle: `FailoverSettings.captivePortalDetection` (default true).
+
 ## Testing
 
 - Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)
