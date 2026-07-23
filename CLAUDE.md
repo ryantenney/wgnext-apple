@@ -135,6 +135,24 @@ See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
 ### Debug Testing
 Build with `FAILOVER_TESTING` flag (`fastlane ios device_failover`) to get Force Failover/Failback buttons in the detail view. All debug code is `#if FAILOVER_TESTING` gated.
 
+## Warm Spare Cellular Failover
+
+Keeps a pre-warmed UDP socket on the cellular interface (`IP_BOUND_IF`) while Wi-Fi carries the tunnel; Wi-Fi loss becomes an atomic path flip inside the running provider (no rebind, no re-handshake, no `NEVPNStatus` transitions). iOS single-config tunnels only — failover groups and TiT are excluded. See `DESIGN-warm-spare-cellular-failover.md`.
+
+### Key Files
+- `Sources/WireGuardKitGo/warmspare.go` — `dualPathBind` (wraps `StdNetBind` + interface-bound cellular sockets), `warmSpareController` (NAT keepalives, quality probes, EIM self-test), echo protocol
+- `Sources/WireGuardKit/PathController.swift` — warming/flip state machine (hard loss, soft degradation thresholds, recovery dwell, adaptive warming)
+- `Sources/WireGuardKit/WarmSpareSettings.swift` — settings model, stored per-tunnel in `providerConfiguration["WarmSpareSettings"]`
+- `Sources/WireGuardApp/Tunnel/TunnelsManager+WarmSpare.swift` — app-side persistence + IPC
+- `server/echo-responder/` — standalone Go UDP echo responder (runs on the WireGuard server host; own go.mod, testable on any platform)
+
+### Notes
+- Go bridge functions: `wgTurnOnWarm`, `wgWarmSetCellular`, `wgWarmClearCellular`, `wgWarmSetActivePath`, `wgWarmGetState`, `wgWarmStartEimTest`. Warm handles live in `tunnelHandles`, so `wgSetConfig`/`wgBumpSockets`/`wgTurnOff` work unchanged.
+- IPC message type 5 = warm spare status, 6 = run EIM self-test, 7 = debug force path (`FAILOVER_TESTING`)
+- Cellular sockets survive `BindUpdate` Close/Open cycles by design (the warm NAT mapping must outlive socket bumps)
+- Probes/keepalives go only to `probePort` (never the WireGuard port — premature re-homing) and target the tunnel endpoint IP (shares its routing exception)
+- Warm spare requires the always-connected on-demand mode (`ActivateOnDemandOption.anyInterface(.anySSID)`, i.e. "Always On"); `supportsWarmSpare` encodes this for UI
+
 ## Testing
 
 - Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)
