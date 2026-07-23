@@ -11,6 +11,7 @@ class TunnelDetailTableViewController: UITableViewController {
         case interface
         case peer(index: Int, peer: TunnelViewModel.PeerData)
         case onDemand
+        case warmSpare
         case delete
     }
 
@@ -102,6 +103,7 @@ class TunnelDetailTableViewController: UITableViewController {
             sections.append(.peer(index: index, peer: peer))
         }
         sections.append(.onDemand)
+        sections.append(.warmSpare)
         sections.append(.delete)
     }
 
@@ -282,6 +284,10 @@ class TunnelDetailTableViewController: UITableViewController {
             break
         }
         tableView.reloadSections(IndexSet(integer: onDemandSection), with: .automatic)
+        // The warm spare row's availability depends on the on-demand mode.
+        if let warmSpareSection = sections.firstIndex(where: { if case .warmSpare = $0 { return true } else { return false } }) {
+            tableView.reloadSections(IndexSet(integer: warmSpareSection), with: .none)
+        }
     }
 }
 
@@ -317,6 +323,8 @@ extension TunnelDetailTableViewController {
             return peerFieldIsVisible[peerIndex].filter { $0 }.count
         case .onDemand:
             return onDemandViewModel.isWiFiInterfaceEnabled ? 2 : 1
+        case .warmSpare:
+            return 1
         case .delete:
             return 1
         }
@@ -334,6 +342,8 @@ extension TunnelDetailTableViewController {
             return tr("tunnelSectionTitlePeer")
         case .onDemand:
             return tr("tunnelSectionTitleOnDemand")
+        case .warmSpare:
+            return nil
         case .delete:
             return nil
         }
@@ -351,6 +361,8 @@ extension TunnelDetailTableViewController {
             return peerCell(for: tableView, at: indexPath, with: peer, peerIndex: index)
         case .onDemand:
             return onDemandCell(for: tableView, at: indexPath)
+        case .warmSpare:
+            return warmSpareCell(for: tableView, at: indexPath)
         case .delete:
             return deleteConfigurationCell(for: tableView, at: indexPath)
         }
@@ -501,6 +513,19 @@ extension TunnelDetailTableViewController {
         }
     }
 
+    private func warmSpareCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell: ChevronCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.message = "Warm Spare"
+        if !tunnel.onDemandOption.supportsWarmSpare {
+            cell.detailMessage = "Requires Always On"
+        } else if tunnelsManager.warmSpareSettings(for: tunnel)?.enabled == true {
+            cell.detailMessage = "On"
+        } else {
+            cell.detailMessage = "Off"
+        }
+        return cell
+    }
+
     private func deleteConfigurationCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
         cell.buttonText = tr("deleteTunnelButtonTitle")
@@ -530,6 +555,9 @@ extension TunnelDetailTableViewController {
             case .ssid = TunnelDetailTableViewController.onDemandFields[indexPath.row] {
             return indexPath
         }
+        if case .warmSpare = sections[indexPath.section] {
+            return indexPath
+        }
         return nil
     }
 
@@ -538,6 +566,10 @@ extension TunnelDetailTableViewController {
             case .ssid = TunnelDetailTableViewController.onDemandFields[indexPath.row] {
             let ssidDetailVC = SSIDOptionDetailTableViewController(title: onDemandViewModel.ssidOption.localizedUIString, ssids: onDemandViewModel.selectedSSIDs)
             navigationController?.pushViewController(ssidDetailVC, animated: true)
+        }
+        if case .warmSpare = sections[indexPath.section] {
+            let warmSpareVC = WarmSpareViewController(tunnelsManager: tunnelsManager, tunnel: tunnel)
+            navigationController?.pushViewController(warmSpareVC, animated: true)
         }
         tableView.deselectRow(at: indexPath, animated: true)
     }
