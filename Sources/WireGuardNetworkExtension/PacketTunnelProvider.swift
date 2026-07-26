@@ -238,10 +238,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             group.enter()
             adapter.getRuntimeConfiguration { configString in
                 if let configString = configString {
-                    let (tx, rx) = ConnectionHealthMonitor.parseTxRxBytes(from: configString)
+                    let (tx, rx) = UAPI.parseTxRxBytes(from: configString)
                     state["txBytes"] = tx
                     state["rxBytes"] = rx
-                    let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: configString)
+                    let handshakeAge = UAPI.parseLastHandshakeAge(from: configString)
                     if handshakeAge != .infinity {
                         state["lastHandshakeTime"] = Date().timeIntervalSince1970 - handshakeAge
                     }
@@ -279,19 +279,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             adapter.getTiTRuntimeConfigurations { innerConfig, outerConfig in
                 var state: [String: Any] = [:]
                 if let innerConfig = innerConfig {
-                    let (tx, rx) = ConnectionHealthMonitor.parseTxRxBytes(from: innerConfig)
+                    let (tx, rx) = UAPI.parseTxRxBytes(from: innerConfig)
                     state["innerTxBytes"] = tx
                     state["innerRxBytes"] = rx
-                    let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: innerConfig)
+                    let handshakeAge = UAPI.parseLastHandshakeAge(from: innerConfig)
                     if handshakeAge != .infinity {
                         state["innerLastHandshakeTime"] = Date().timeIntervalSince1970 - handshakeAge
                     }
                 }
                 if let outerConfig = outerConfig {
-                    let (tx, rx) = ConnectionHealthMonitor.parseTxRxBytes(from: outerConfig)
+                    let (tx, rx) = UAPI.parseTxRxBytes(from: outerConfig)
                     state["outerTxBytes"] = tx
                     state["outerRxBytes"] = rx
-                    let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: outerConfig)
+                    let handshakeAge = UAPI.parseLastHandshakeAge(from: outerConfig)
                     if handshakeAge != .infinity {
                         state["outerLastHandshakeTime"] = Date().timeIntervalSince1970 - handshakeAge
                     }
@@ -400,7 +400,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             guard let self = self, let configString = configString else { return }
 
             let now = Date()
-            let (currentTx, currentRx) = ConnectionHealthMonitor.parseTxRxBytes(from: configString)
+            let (currentTx, currentRx) = UAPI.parseTxRxBytes(from: configString)
 
             // Compute rates
             var txRate: Double = 0
@@ -427,7 +427,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
 
             // Parse last handshake
-            let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: configString)
+            let handshakeAge = UAPI.parseLastHandshakeAge(from: configString)
             let lastHandshake: Date? = handshakeAge != .infinity ? now.addingTimeInterval(-handshakeAge) : nil
 
             // Append to rolling traffic samples
