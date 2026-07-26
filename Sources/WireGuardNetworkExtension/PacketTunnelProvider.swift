@@ -474,7 +474,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// group names when applicable.
     private func resolveDisplayName() -> String {
         let proto = self.protocolConfiguration as? NETunnelProviderProtocol
-        if let configNames = proto?.providerConfiguration?["FailoverConfigNames"] as? [String], let firstName = configNames.first {
+        if let configNames = proto?.providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String], let firstName = configNames.first {
             return firstName
         } else if let config = proto?.asTunnelConfiguration() {
             return config.name ?? "WireGuard"
@@ -561,14 +561,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     private func loadFailoverConfigs(from providerConfig: [String: Any]?) {
-        guard let configStrings = providerConfig?["FailoverConfigs"] as? [String] else { return }
+        guard let configStrings = providerConfig?[ProviderConfigurationKeys.failoverConfigs] as? [String] else { return }
 
-        let names = providerConfig?["FailoverConfigNames"] as? [String] ?? []
+        let names = providerConfig?[ProviderConfigurationKeys.failoverConfigNames] as? [String] ?? []
         failoverConfigNames = names
 
         // Decode settings to check for persistent keepalive override
         var keepaliveOverride: UInt16?
-        if let settingsData = providerConfig?["FailoverSettings"] as? Data,
+        if let settingsData = providerConfig?[ProviderConfigurationKeys.failoverSettings] as? Data,
            let settings = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
             keepaliveOverride = settings.persistentKeepaliveOverride
         }
@@ -619,7 +619,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         guard failoverConfigs.count > 1 else { return }
 
         var settings = FailoverSettings()
-        if let settingsData = providerConfig?["FailoverSettings"] as? Data {
+        if let settingsData = providerConfig?[ProviderConfigurationKeys.failoverSettings] as? Data {
             if let decoded = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
                 settings = decoded
             }

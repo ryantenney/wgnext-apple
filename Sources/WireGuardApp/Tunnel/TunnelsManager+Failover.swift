@@ -37,7 +37,7 @@ extension TunnelsManager {
     func refreshFailoverGroupsContaining(tunnelName: String, oldName: String? = nil) {
         for groupTunnel in failoverGroupTunnels {
             guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-                  var configNames = proto.providerConfiguration?["FailoverConfigNames"] as? [String] else {
+                  var configNames = proto.providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String] else {
                 continue
             }
 
@@ -59,8 +59,8 @@ extension TunnelsManager {
             }
 
             var providerConfig = proto.providerConfiguration ?? [:]
-            providerConfig["FailoverConfigs"] = configs.map { $0.config }
-            providerConfig["FailoverConfigNames"] = configs.map { $0.name }
+            providerConfig[ProviderConfigurationKeys.failoverConfigs] = configs.map { $0.config }
+            providerConfig[ProviderConfigurationKeys.failoverConfigNames] = configs.map { $0.name }
 
             // Update passwordReference if primary changed
             if let primaryName = configNames.first,

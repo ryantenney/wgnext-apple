@@ -41,8 +41,8 @@ struct FailoverGroupSpec: TunnelGroupSpec {
         // Build a lookup of existing stored configs for fallback
         var existingConfigByName: [String: String] = [:]
         if let existing = existing {
-            let existingNames = (existing["FailoverConfigNames"] as? [String]) ?? []
-            let existingConfigs = (existing["FailoverConfigs"] as? [String]) ?? []
+            let existingNames = (existing[ProviderConfigurationKeys.failoverConfigNames] as? [String]) ?? []
+            let existingConfigs = (existing[ProviderConfigurationKeys.failoverConfigs] as? [String]) ?? []
             for (n, c) in zip(existingNames, existingConfigs) {
                 existingConfigByName[n] = c
             }
@@ -68,10 +68,10 @@ struct FailoverGroupSpec: TunnelGroupSpec {
         }
 
         var providerConfig: [String: Any] = existing ?? [:]
-        providerConfig["FailoverConfigs"] = configs.map { $0.config }
-        providerConfig["FailoverConfigNames"] = configs.map { $0.name }
+        providerConfig[ProviderConfigurationKeys.failoverConfigs] = configs.map { $0.config }
+        providerConfig[ProviderConfigurationKeys.failoverConfigNames] = configs.map { $0.name }
         if let settingsData = try? JSONEncoder().encode(settings) {
-            providerConfig["FailoverSettings"] = settingsData
+            providerConfig[ProviderConfigurationKeys.failoverSettings] = settingsData
         }
         return providerConfig
     }
