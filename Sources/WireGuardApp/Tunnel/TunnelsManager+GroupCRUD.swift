@@ -112,7 +112,7 @@ struct TiTGroupSpec: TunnelGroupSpec {
             return nil
         }
 
-        let groupId = (existing?[TunnelInTunnelConfigKeys.groupId] as? String) ?? UUID().uuidString
+        let groupId = (existing?[ProviderConfigurationKeys.titGroupId] as? String) ?? UUID().uuidString
         var providerConfig = existing ?? [:]
         let newConfig = TunnelInTunnelGroup.makeProviderConfiguration(
             groupId: groupId,

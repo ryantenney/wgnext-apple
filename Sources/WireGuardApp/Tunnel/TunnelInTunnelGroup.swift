@@ -41,15 +41,6 @@ struct TunnelInTunnelGroup: Codable, Equatable, Identifiable {
     }
 }
 
-/// providerConfiguration keys used when storing a TiT session in an NETunnelProviderManager.
-enum TunnelInTunnelConfigKeys {
-    static let groupId     = "TiTGroupId"
-    static let outerConfig = "TiTOuterConfig"
-    static let innerConfig = "TiTInnerConfig"
-    static let outerName   = "TiTOuterName"
-    static let innerName   = "TiTInnerName"
-}
-
 // MARK: - Cleanup
 
 extension TunnelInTunnelGroup {
@@ -74,11 +65,11 @@ extension TunnelInTunnelGroup {
         innerWgQuick: String, innerName: String
     ) -> [String: Any] {
         return [
-            TunnelInTunnelConfigKeys.groupId:     groupId,
-            TunnelInTunnelConfigKeys.outerConfig: outerWgQuick,
-            TunnelInTunnelConfigKeys.innerConfig: innerWgQuick,
-            TunnelInTunnelConfigKeys.outerName:   outerName,
-            TunnelInTunnelConfigKeys.innerName:   innerName
+            ProviderConfigurationKeys.titGroupId:     groupId,
+            ProviderConfigurationKeys.titOuterConfig: outerWgQuick,
+            ProviderConfigurationKeys.titInnerConfig: innerWgQuick,
+            ProviderConfigurationKeys.titOuterName:   outerName,
+            ProviderConfigurationKeys.titInnerName:   innerName
         ]
     }
 }

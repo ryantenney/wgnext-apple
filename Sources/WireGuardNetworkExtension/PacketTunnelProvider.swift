@@ -543,12 +543,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     private func loadTiTConfigs(from providerConfig: [String: Any]?) {
         guard
-            let outerConfigString = providerConfig?["TiTOuterConfig"] as? String,
-            let innerConfigString = providerConfig?["TiTInnerConfig"] as? String
+            let outerConfigString = providerConfig?[ProviderConfigurationKeys.titOuterConfig] as? String,
+            let innerConfigString = providerConfig?[ProviderConfigurationKeys.titInnerConfig] as? String
         else { return }
 
-        let outerName = providerConfig?["TiTOuterName"] as? String
-        let innerName = providerConfig?["TiTInnerName"] as? String
+        let outerName = providerConfig?[ProviderConfigurationKeys.titOuterName] as? String
+        let innerName = providerConfig?[ProviderConfigurationKeys.titInnerName] as? String
 
         do {
             titOuterConfig = try TunnelConfiguration(fromWgQuickConfig: outerConfigString, called: outerName)

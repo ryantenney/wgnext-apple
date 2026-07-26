@@ -42,8 +42,8 @@ extension TunnelsManager {
             }
 
             let matchName = oldName ?? tunnelName
-            var outerName = providerConfig[TunnelInTunnelConfigKeys.outerName] as? String ?? ""
-            var innerName = providerConfig[TunnelInTunnelConfigKeys.innerName] as? String ?? ""
+            var outerName = providerConfig[ProviderConfigurationKeys.titOuterName] as? String ?? ""
+            var innerName = providerConfig[ProviderConfigurationKeys.titInnerName] as? String ?? ""
 
             guard outerName == matchName || innerName == matchName else { continue }
 
@@ -56,13 +56,13 @@ extension TunnelsManager {
             // Rebuild configs from current tunnel states
             if let outerTunnel = self.tunnel(named: outerName),
                let outerConfig = outerTunnel.tunnelConfiguration?.asWgQuickConfig() {
-                providerConfig[TunnelInTunnelConfigKeys.outerConfig] = outerConfig
-                providerConfig[TunnelInTunnelConfigKeys.outerName] = outerName
+                providerConfig[ProviderConfigurationKeys.titOuterConfig] = outerConfig
+                providerConfig[ProviderConfigurationKeys.titOuterName] = outerName
             }
             if let innerTunnel = self.tunnel(named: innerName),
                let innerConfig = innerTunnel.tunnelConfiguration?.asWgQuickConfig() {
-                providerConfig[TunnelInTunnelConfigKeys.innerConfig] = innerConfig
-                providerConfig[TunnelInTunnelConfigKeys.innerName] = innerName
+                providerConfig[ProviderConfigurationKeys.titInnerConfig] = innerConfig
+                providerConfig[ProviderConfigurationKeys.titInnerName] = innerName
             }
 
             // Update passwordReference from outer tunnel
