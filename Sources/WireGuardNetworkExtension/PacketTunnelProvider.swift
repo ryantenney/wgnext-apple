@@ -30,6 +30,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// Index of the currently active configuration within failoverConfigs.
     private var activeConfigIndex: Int = 0
 
+    /// The failover health monitor, if this tunnel is a failover group.
+    /// The provider owns the lifecycle; the adapter holds a copy (installed
+    /// via `setHealthMonitor`) for its network-path callbacks.
+    private var healthMonitor: ConnectionHealthMonitor?
+
     // MARK: - Widget Stats Writer
 
     /// Timer that periodically writes traffic stats to shared UserDefaults for the widget.
@@ -164,8 +169,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         finalizeSessionRecord(reason: reason)
 
-        adapter.healthMonitor?.stop()
-        adapter.healthMonitor = nil
+        healthMonitor?.stop()
+        healthMonitor = nil
+        adapter.setHealthMonitor(nil)
         stopStatsWriter()
 
         adapter.stop { error in
@@ -219,7 +225,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             let group = DispatchGroup()
 
             // Gather health monitor state
-            if let monitor = adapter.healthMonitor {
+            if let monitor = healthMonitor {
                 group.enter()
                 monitor.getStateSnapshot { snapshot in
                     for (key, value) in snapshot {
@@ -251,7 +257,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         #if FAILOVER_TESTING
         case 2:
             // Debug: force failover to next config
-            guard let monitor = adapter.healthMonitor else {
+            guard let monitor = healthMonitor else {
                 completionHandler(nil)
                 return
             }
@@ -262,7 +268,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         case 3:
             // Debug: force failback to primary
-            guard let monitor = adapter.healthMonitor else {
+            guard let monitor = healthMonitor else {
                 completionHandler(nil)
                 return
             }
@@ -627,7 +633,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             wg_log(logLevel.osLogLevel, message: message)
         }
         monitor.delegate = self
-        adapter.healthMonitor = monitor
+        healthMonitor = monitor
+        adapter.setHealthMonitor(monitor)
         monitor.start()
     }
 }
