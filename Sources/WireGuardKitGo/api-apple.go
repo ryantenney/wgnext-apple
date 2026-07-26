@@ -119,7 +119,7 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 	err = dev.IpcSet(C.GoString(settings))
 	if err != nil {
 		logger.Errorf("Unable to set IPC settings: %v", err)
-		unix.Close(dupTunFd)
+		dev.Close()
 		return -1
 	}
 
@@ -133,7 +133,7 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 		}
 	}
 	if i == math.MaxInt32 {
-		unix.Close(dupTunFd)
+		dev.Close()
 		return -1
 	}
 	tunnelHandles[i] = tunnelHandle{dev, logger}
