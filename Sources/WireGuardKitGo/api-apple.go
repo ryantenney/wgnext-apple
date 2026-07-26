@@ -158,7 +158,7 @@ func wgTurnOff(tunnelHandle int32) {
 func wgSetConfig(tunnelHandle int32, settings *C.char) int64 {
 	dev, ok := tunnelHandles[tunnelHandle]
 	if !ok {
-		return 0
+		return -1
 	}
 	err := dev.IpcSet(C.GoString(settings))
 	if err != nil {
@@ -447,7 +447,7 @@ func wgProbeGetConfig(handle int32) *C.char {
 func wgProbeSetConfig(handle int32, settings *C.char) int64 {
 	h, ok := probeHandles[handle]
 	if !ok {
-		return 0
+		return -1
 	}
 	err := h.IpcSet(C.GoString(settings))
 	if err != nil {
@@ -1125,7 +1125,7 @@ func wgGetOuterConfigTiT(handle int32) *C.char {
 func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
 	h, ok := titHandles[handle]
 	if !ok {
-		return 0
+		return -1
 	}
 	if err := h.innerDev.IpcSet(C.GoString(settings)); err != nil {
 		h.innerLogger.Errorf("TiT: unable to update inner config: %v", err)
