@@ -359,7 +359,7 @@ extension TunnelsManager {
         }
 
         do {
-            try session.sendProviderMessage(Data([kind.ipcMessageType])) { responseData in
+            try session.sendProviderMessage(kind.ipcMessage.data) { responseData in
                 guard let data = responseData,
                       let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     completionHandler(nil)
