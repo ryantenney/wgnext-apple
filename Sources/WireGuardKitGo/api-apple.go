@@ -27,6 +27,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -775,7 +776,12 @@ func (t *pipedTunDevice) Close() error {
 // ---- PipedBind: conn.Bind implementation for INNER ----
 
 type pipedBind struct {
-	pt          *pipedTunnel
+	pt *pipedTunnel
+
+	// Guards closeSignal: Open/Close are called from device.BindUpdate while
+	// a previous generation's receive func may still be blocked on the old
+	// channel. Same pattern as dualPathBind's genClosed (warmspare.go).
+	mu          sync.Mutex
 	closeSignal chan struct{}
 }
 
@@ -795,10 +801,13 @@ func (e *pipedEndpoint) DstIP() netip.Addr { return e.addrPort.Addr() }
 func (e *pipedEndpoint) SrcIP() netip.Addr { return netip.Addr{} }
 
 func (b *pipedBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
-	b.closeSignal = make(chan struct{})
+	b.mu.Lock()
+	gen := make(chan struct{})
+	b.closeSignal = gen
+	b.mu.Unlock()
 	receive := func(data []byte) (int, conn.Endpoint, error) {
 		select {
-		case <-b.closeSignal:
+		case <-gen:
 			return 0, nil, net.ErrClosed
 		case <-b.pt.closed:
 			return 0, nil, net.ErrClosed
@@ -815,13 +824,12 @@ func (b *pipedBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
 }
 
 func (b *pipedBind) Close() error {
+	b.mu.Lock()
 	if b.closeSignal != nil {
-		select {
-		case <-b.closeSignal:
-		default:
-			close(b.closeSignal)
-		}
+		close(b.closeSignal)
+		b.closeSignal = nil
 	}
+	b.mu.Unlock()
 	return nil
 }
 
