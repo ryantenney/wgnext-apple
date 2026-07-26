@@ -173,7 +173,7 @@ extension TunnelsManager {
 
         var finalConfig = providerConfig
         #if os(macOS)
-        finalConfig["UID"] = getuid()
+        finalConfig[ProviderConfigurationKeys.uid] = getuid()
         #endif
         finalConfig[spec.groupKind.groupIdKey] = groupId
         proto.providerConfiguration = finalConfig
