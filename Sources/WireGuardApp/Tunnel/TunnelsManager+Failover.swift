@@ -35,14 +35,12 @@ extension TunnelsManager {
 
     /// Update any failover groups that reference a tunnel that was modified or renamed.
     func refreshFailoverGroupsContaining(tunnelName: String, oldName: String? = nil) {
-        for groupTunnel in failoverGroupTunnels {
-            guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-                  var configNames = proto.providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String] else {
-                continue
+        let matchName = oldName ?? tunnelName
+        forEachGroupNeedingRefresh(kind: .failover) { _, proto, providerConfig in
+            guard var configNames = providerConfig[ProviderConfigurationKeys.failoverConfigNames] as? [String],
+                  configNames.contains(matchName) else {
+                return false
             }
-
-            let matchName = oldName ?? tunnelName
-            guard configNames.contains(matchName) else { continue }
 
             // Update the name if it was renamed
             if let oldName = oldName, let idx = configNames.firstIndex(of: oldName) {
@@ -57,8 +55,6 @@ extension TunnelsManager {
                 }
                 return (name, config)
             }
-
-            var providerConfig = proto.providerConfiguration ?? [:]
             providerConfig[ProviderConfigurationKeys.failoverConfigs] = configs.map { $0.config }
             providerConfig[ProviderConfigurationKeys.failoverConfigNames] = configs.map { $0.name }
 
@@ -69,13 +65,7 @@ extension TunnelsManager {
                let passwordRef = primaryProto.passwordReference {
                 proto.passwordReference = passwordRef
             }
-
-            proto.providerConfiguration = providerConfig
-            groupTunnel.tunnelProvider.saveToPreferences { [weak self] _ in
-                if let self = self, let index = self.failoverGroupTunnels.firstIndex(of: groupTunnel) {
-                    self.groupListDelegate?.groupModified(kind: .failover, at: index)
-                }
-            }
+            return true
         }
     }
 

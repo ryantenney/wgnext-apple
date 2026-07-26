@@ -35,17 +35,12 @@ extension TunnelsManager {
 
     /// Update any TiT groups that reference a tunnel that was modified or renamed.
     func refreshTiTGroupsContaining(tunnelName: String, oldName: String? = nil) {
-        for groupTunnel in titGroupTunnels {
-            guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-                  var providerConfig = proto.providerConfiguration else {
-                continue
-            }
-
-            let matchName = oldName ?? tunnelName
+        let matchName = oldName ?? tunnelName
+        forEachGroupNeedingRefresh(kind: .tunnelInTunnel) { _, proto, providerConfig in
             var outerName = providerConfig[ProviderConfigurationKeys.titOuterName] as? String ?? ""
             var innerName = providerConfig[ProviderConfigurationKeys.titInnerName] as? String ?? ""
 
-            guard outerName == matchName || innerName == matchName else { continue }
+            guard outerName == matchName || innerName == matchName else { return false }
 
             // Update names if renamed
             if let oldName = oldName {
@@ -71,13 +66,7 @@ extension TunnelsManager {
                let passwordRef = outerProto.passwordReference {
                 proto.passwordReference = passwordRef
             }
-
-            proto.providerConfiguration = providerConfig
-            groupTunnel.tunnelProvider.saveToPreferences { [weak self] _ in
-                if let self = self, let index = self.titGroupTunnels.firstIndex(of: groupTunnel) {
-                    self.groupListDelegate?.groupModified(kind: .tunnelInTunnel, at: index)
-                }
-            }
+            return true
         }
     }
 

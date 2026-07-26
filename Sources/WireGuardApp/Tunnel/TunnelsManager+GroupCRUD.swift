@@ -207,15 +207,10 @@ extension TunnelsManager {
             #endif
 
             let groupTunnel = TunnelContainer(tunnel: tunnelProviderManager)
-            switch kind {
-            case .failover:
-                self.failoverGroupTunnels.append(groupTunnel)
-                self.failoverGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-            case .tunnelInTunnel:
-                self.titGroupTunnels.append(groupTunnel)
-                self.titGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-            }
-            self.groupListDelegate?.groupAdded(kind: kind, at: self.groupTunnels(kind: kind).firstIndex(of: groupTunnel)!)
+            let keyPath = self.groupArrayKeyPath(kind)
+            self[keyPath: keyPath].append(groupTunnel)
+            self[keyPath: keyPath].sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
+            self.groupListDelegate?.groupAdded(kind: kind, at: self[keyPath: keyPath].firstIndex(of: groupTunnel)!)
             completionHandler(.success(groupTunnel))
         }
     }
@@ -288,15 +283,10 @@ extension TunnelsManager {
             #endif
 
             if isNameChanged {
-                let groupList = self.groupTunnels(kind: kind)
-                let oldIndex = groupList.firstIndex(of: tunnel)!
-                switch kind {
-                case .failover:
-                    self.failoverGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-                case .tunnelInTunnel:
-                    self.titGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-                }
-                let newIndex = self.groupTunnels(kind: kind).firstIndex(of: tunnel)!
+                let keyPath = self.groupArrayKeyPath(kind)
+                let oldIndex = self[keyPath: keyPath].firstIndex(of: tunnel)!
+                self[keyPath: keyPath].sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
+                let newIndex = self[keyPath: keyPath].firstIndex(of: tunnel)!
                 self.groupListDelegate?.groupMoved(kind: kind, from: oldIndex, to: newIndex)
                 OnDemandSuspensionStore.handleTunnelRenamed(from: oldName, to: spec.name)
             }
@@ -333,17 +323,10 @@ extension TunnelsManager {
                 return
             }
             if let self = self {
-                switch kind {
-                case .failover:
-                    if let index = self.failoverGroupTunnels.firstIndex(of: tunnel) {
-                        self.failoverGroupTunnels.remove(at: index)
-                        self.groupListDelegate?.groupRemoved(kind: kind, at: index, tunnel: tunnel)
-                    }
-                case .tunnelInTunnel:
-                    if let index = self.titGroupTunnels.firstIndex(of: tunnel) {
-                        self.titGroupTunnels.remove(at: index)
-                        self.groupListDelegate?.groupRemoved(kind: kind, at: index, tunnel: tunnel)
-                    }
+                let keyPath = self.groupArrayKeyPath(kind)
+                if let index = self[keyPath: keyPath].firstIndex(of: tunnel) {
+                    self[keyPath: keyPath].remove(at: index)
+                    self.groupListDelegate?.groupRemoved(kind: kind, at: index, tunnel: tunnel)
                 }
             }
             OnDemandSuspensionStore.remove(tunnel.name)
@@ -379,6 +362,26 @@ extension TunnelsManager {
             refreshFailoverGroupsContaining(tunnelName: tunnelName, oldName: oldName)
         case .tunnelInTunnel:
             refreshTiTGroupsContaining(tunnelName: tunnelName, oldName: oldName)
+        }
+    }
+
+    /// Shared skeleton of the per-kind group refresh: iterate the kind's
+    /// groups, let `update` decide whether this group references the changed
+    /// tunnel and mutate its providerConfiguration (returning false to
+    /// skip), then persist and notify the list delegate. The kind-specific
+    /// membership schema stays in the caller's closure.
+    func forEachGroupNeedingRefresh(kind: TunnelGroupKind,
+                                    update: (TunnelContainer, NETunnelProviderProtocol, inout [String: Any]) -> Bool) {
+        for groupTunnel in groupTunnels(kind: kind) {
+            guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else { continue }
+            var providerConfig = proto.providerConfiguration ?? [:]
+            guard update(groupTunnel, proto, &providerConfig) else { continue }
+            proto.providerConfiguration = providerConfig
+            groupTunnel.tunnelProvider.saveToPreferences { [weak self] _ in
+                if let self = self, let index = self.groupIndex(kind: kind, of: groupTunnel) {
+                    self.groupListDelegate?.groupModified(kind: kind, at: index)
+                }
+            }
         }
     }
 }
