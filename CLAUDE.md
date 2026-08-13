@@ -135,6 +135,16 @@ See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
 ### Debug Testing
 Build with `FAILOVER_TESTING` flag (`fastlane ios device_failover`) to get Force Failover/Failback buttons in the detail view. All debug code is `#if FAILOVER_TESTING` gated.
 
+## Map Home (iOS)
+
+Optional map-based landing page (Proton VPN–inspired), additive to the classic tunnels list. See `DESIGN-map-home.md` for full documentation.
+
+- `Sources/WireGuardApp/UI/iOS/MapHome/` — all screens, the CoreAnimation map renderer (`ConnectionMapView`), scene model (`MapScene`), location store (`EndpointLocationStore`), and generated data (world landmasses, city database, time zone table)
+- Entry: globe button in the tunnels list; optional open-at-launch setting
+- Endpoint locations are user-assigned per tunnel (app group defaults); user location is approximated from the time zone (no location permission, no geo-IP)
+- Shows animated flow arcs; two chained arcs for tunnel-in-tunnel; standby + hot-spare arcs for failover groups (live via group state IPC)
+- Regenerate embedded map data with `python3 scripts/generate-map-data.py`
+
 ## Testing
 
 - Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)

@@ -18,6 +18,7 @@ class SettingsTableViewController: UITableViewController {
         case notifyOnDisconnect
         case notifyOnFailover
         case ipDiscovery
+        case mapHomeAtLaunch
 
         var localizedUIString: String {
             switch self {
@@ -29,6 +30,7 @@ class SettingsTableViewController: UITableViewController {
             case .notifyOnDisconnect: return tr("settingsNotifyOnDisconnect")
             case .notifyOnFailover: return tr("settingsNotifyOnFailover")
             case .ipDiscovery: return tr("settingsIPDiscovery")
+            case .mapHomeAtLaunch: return "Open map at launch"
             }
         }
     }
@@ -37,6 +39,7 @@ class SettingsTableViewController: UITableViewController {
         [.iosAppVersion, .goBackendVersion],
         [.notifyOnDisconnect, .notifyOnFailover],
         [.ipDiscovery],
+        [.mapHomeAtLaunch],
         [.exportZipArchive],
         [.viewLog],
         [.sessionHistory]
@@ -196,10 +199,12 @@ extension SettingsTableViewController {
         case 2:
             return tr("settingsSectionTitleIPDiscovery")
         case 3:
-            return tr("settingsSectionTitleExportConfigurations")
+            return "Map Home"
         case 4:
-            return tr("settingsSectionTitleTunnelLog")
+            return tr("settingsSectionTitleExportConfigurations")
         case 5:
+            return tr("settingsSectionTitleTunnelLog")
+        case 6:
             return tr("settingsSectionTitleSessionHistory")
         default:
             return nil
@@ -229,6 +234,14 @@ extension SettingsTableViewController {
             cell.isOn = IPDiscoverySettings.isEnabled
             cell.onSwitchToggled = { isOn in
                 IPDiscoverySettings.isEnabled = isOn
+            }
+            return cell
+        } else if field == .mapHomeAtLaunch {
+            let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.message = field.localizedUIString
+            cell.isOn = MapHomeSettings.isShownAtLaunch
+            cell.onSwitchToggled = { isOn in
+                MapHomeSettings.isShownAtLaunch = isOn
             }
             return cell
         } else if field == .notifyOnDisconnect || field == .notifyOnFailover {
