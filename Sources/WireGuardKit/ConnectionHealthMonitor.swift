@@ -40,6 +40,10 @@ public protocol ConnectionHealthMonitorDelegate: AnyObject {
 
     /// Called when a failback probe succeeds and the monitor returns to a higher-priority config.
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int)
+
+    /// Called once per outage when failover was warranted by traffic but held back because no
+    /// other server could be reached either (the local link is the likely culprit).
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didSuppressFailoverAt index: Int, txWithoutRxDuration: TimeInterval, reason: String)
 }
 
 /// Log level for failover messages.
@@ -113,6 +117,45 @@ public class ConnectionHealthMonitor {
     /// When we first noticed tx increasing without rx. `nil` when healthy or idle.
     private var txWithoutRxSince: Date?
 
+    // MARK: - Confirmation & Adaptive Sensitivity State
+
+    /// Whether the underlying network path is currently usable (from the adapter's path monitor).
+    private var pathSatisfied = true
+
+    /// When the network path last changed; tx-without-rx is ignored for `pathChangeGrace` after it.
+    private var lastPathChange: Date = .distantPast
+
+    /// Outages that turned out to be the link rather than the server, and quick failbacks.
+    private var falseAlarmCount = 0
+
+    /// When `falseAlarmCount` last changed; drives the decay.
+    private var lastIncidentTime: Date = .distantPast
+
+    /// Set while failover is warranted by traffic but held back because no server is reachable.
+    private var suppressedSince: Date?
+
+    /// Temporary probe used to confirm the next config is reachable when no hot spare is running.
+    private var confirmationProbeHandle: Int32?
+    private var confirmationProbeIndex: Int?
+    private var confirmationProbeStartedAt: Date?
+
+    /// Hot spare handshakes at least every ~2 min while its server answers; older than this
+    /// means the spare cannot reach its server either.
+    private let hotSpareFreshness: TimeInterval = 150
+
+    /// Quiet time after which one false alarm is forgiven.
+    private let adaptiveDecayInterval: TimeInterval = 1800
+
+    /// Largest adaptive multiplier applied to `trafficTimeout`.
+    private let maxAdaptiveMultiplier: Double = 4
+
+    /// Traffic timeout after adaptive scaling.
+    private var effectiveTrafficTimeout: TimeInterval {
+        guard settings.adaptiveSensitivity, falseAlarmCount > 0 else { return settings.trafficTimeout }
+        let multiplier = min(pow(1.5, Double(falseAlarmCount)), maxAdaptiveMultiplier)
+        return settings.trafficTimeout * multiplier
+    }
+
     // MARK: - Background Probe State
 
     /// Handle for an active failback probe (non-nil while a background probe is running).
@@ -177,15 +220,23 @@ public class ConnectionHealthMonitor {
             self.failbackTimer = nil
             self.stopFailbackProbe()
             self.stopHotSpare()
+            self.stopConfirmationProbe()
             self.logHandler(.verbose, "Failover: health monitor stopped")
         }
     }
 
-    /// Called by the adapter when the network path changes. If we're on a fallback
-    /// and the network just came back online, this is a good time to probe the primary.
-    public func networkPathDidChange() {
+    /// Called by the adapter when the network path changes. Records path state so outages
+    /// with no usable path are never blamed on the server, and gives roaming a grace period.
+    /// If we're on a fallback and the network just came back online, probe the primary.
+    public func networkPathDidChange(isSatisfied: Bool) {
         workQueue.async {
-            guard self.isRunning, self.activeIndex != 0, self.settings.autoFailback else { return }
+            self.pathSatisfied = isSatisfied
+            self.lastPathChange = Date()
+            if !isSatisfied {
+                self.logHandler(.verbose, "Failover: network path unsatisfied, pausing health evaluation")
+                self.txWithoutRxSince = nil
+            }
+            guard self.isRunning, self.activeIndex != 0, self.settings.autoFailback, isSatisfied else { return }
             self.logHandler(.verbose, "Failover: network change detected while on fallback, scheduling immediate probe")
             self.workQueue.asyncAfter(deadline: .now() + 5) { [weak self] in
                 self?.probeFailback()
@@ -210,6 +261,12 @@ public class ConnectionHealthMonitor {
 
     private func checkHealth() {
         guard isRunning, let adapter = adapter else { return }
+
+        if falseAlarmCount > 0, Date().timeIntervalSince(lastIncidentTime) > adaptiveDecayInterval {
+            falseAlarmCount -= 1
+            lastIncidentTime = Date()
+            logHandler(.verbose, "Failover: quiet for \(Int(adaptiveDecayInterval))s, sensitivity relaxed to \(Int(effectiveTrafficTimeout))s")
+        }
 
         adapter.getRuntimeConfiguration { [weak self] (configString: String?) in
             guard let self = self, let configString = configString else { return }
@@ -245,11 +302,25 @@ public class ConnectionHealthMonitor {
                 logHandler(.verbose, "Failover: connection stable on config #\(activeIndex), resetting cycle counter")
                 consecutiveCycles = 0
             }
+            clearIncident(recovered: true)
             return
         }
 
         if txDelta == 0 {
             // No outgoing traffic — tunnel is idle, not unhealthy
+            txWithoutRxSince = nil
+            clearIncident(recovered: false)
+            return
+        }
+
+        // No usable path, or one that just changed: not the server's fault yet.
+        if !pathSatisfied {
+            txWithoutRxSince = nil
+            return
+        }
+        let sincePathChange = Date().timeIntervalSince(lastPathChange)
+        if sincePathChange < settings.pathChangeGrace {
+            logHandler(.verbose, "Failover: tx without rx \(Int(sincePathChange))s after a path change, within grace")
             txWithoutRxSince = nil
             return
         }
@@ -262,8 +333,9 @@ public class ConnectionHealthMonitor {
         }
 
         let duration = Date().timeIntervalSince(txWithoutRxSince!)
-        guard duration > settings.trafficTimeout else {
-            logHandler(.verbose, "Failover: tx without rx for \(Int(duration))s/\(Int(settings.trafficTimeout))s on config #\(activeIndex)")
+        let timeout = effectiveTrafficTimeout
+        guard duration > timeout else {
+            logHandler(.verbose, "Failover: tx without rx for \(Int(duration))s/\(Int(timeout))s on config #\(activeIndex)")
             return
         }
 
@@ -286,6 +358,17 @@ public class ConnectionHealthMonitor {
             consecutiveCycles = 0
         }
 
+        if settings.confirmBeforeFailover {
+            confirmThenFailover(duration: duration)
+        } else {
+            failoverNow(duration: duration)
+        }
+    }
+
+    /// Switch immediately: promote the hot spare if there is one, else swap configs.
+    private func failoverNow(duration: TimeInterval) {
+        clearIncident(recovered: false)
+
         // Try hot spare for pre-validated instant failover
         if tryHotSpareFailover() {
             return
@@ -294,9 +377,128 @@ public class ConnectionHealthMonitor {
         // Switch to next config
         let nextIndex = (activeIndex + 1) % configurations.count
         let nextName = configurations[nextIndex].name ?? "config #\(nextIndex)"
-        logHandler(.error, "Failover: tx without rx for \(Int(duration))s (>\(Int(settings.trafficTimeout))s), switching to '\(nextName)'")
+        logHandler(.error, "Failover: tx without rx for \(Int(duration))s (>\(Int(effectiveTrafficTimeout))s), switching to '\(nextName)'")
 
         switchToConfig(at: nextIndex)
+    }
+
+    // MARK: - Failover Confirmation
+
+    /// Decide whether the outage is the server's or the link's before switching. The next
+    /// config's server must have handshaked recently — through the hot spare when one runs,
+    /// otherwise through a temporary probe started here. No handshake from any server means
+    /// the local link is down: hold, count a false alarm, and re-check every tick.
+    private func confirmThenFailover(duration: TimeInterval) {
+        guard let adapter = adapter else { return }
+        let nextIndex = (activeIndex + 1) % configurations.count
+        let nextName = configurations[nextIndex].name ?? "config #\(nextIndex)"
+
+        if let since = suppressedSince, settings.linkDownHoldTime > 0, Date().timeIntervalSince(since) > settings.linkDownHoldTime {
+            logHandler(.error, "Failover: held for \(Int(Date().timeIntervalSince(since)))s with no reachable server; switching to '\(nextName)' anyway")
+            failoverNow(duration: duration)
+            return
+        }
+
+        // A running hot spare for the next config is the cheapest witness.
+        if let handle = hotSpareHandle, hotSpareConfigIndex == nextIndex {
+            adapter.getProbeRuntimeConfiguration(handle: handle) { [weak self] (configString: String?) in
+                guard let self = self else { return }
+                self.workQueue.async {
+                    let age = configString.map(Self.parseLastHandshakeAge) ?? .infinity
+                    if age < self.hotSpareFreshness {
+                        self.logHandler(.verbose, "Failover: hot spare '\(nextName)' handshaked \(Int(age))s ago; server-side outage confirmed")
+                        self.failoverNow(duration: duration)
+                    } else {
+                        let ageText = age == .infinity ? "never handshaked" : "last handshaked \(Int(age))s ago"
+                        self.noteSuppressed(duration: duration, reason: "hot spare '\(nextName)' \(ageText)")
+                    }
+                }
+            }
+            return
+        }
+
+        // Otherwise use (or start) a temporary confirmation probe.
+        if let handle = confirmationProbeHandle, confirmationProbeIndex == nextIndex, let startedAt = confirmationProbeStartedAt {
+            adapter.getProbeRuntimeConfiguration(handle: handle) { [weak self] (configString: String?) in
+                guard let self = self else { return }
+                self.workQueue.async {
+                    let age = configString.map(Self.parseLastHandshakeAge) ?? .infinity
+                    let probeAge = Date().timeIntervalSince(startedAt)
+                    if age <= probeAge {
+                        self.logHandler(.verbose, "Failover: confirmation probe reached '\(nextName)' (handshake \(Int(age))s ago); promoting it")
+                        self.confirmationProbeHandle = nil
+                        self.confirmationProbeIndex = nil
+                        self.confirmationProbeStartedAt = nil
+                        self.clearIncident(recovered: false)
+                        self.promoteProbeAsActive(handle: handle, index: nextIndex, label: "confirmation probe")
+                    } else if probeAge > self.settings.confirmationTimeout {
+                        self.noteSuppressed(duration: duration, reason: "probe to '\(nextName)' has not handshaked in \(Int(probeAge))s")
+                    } else {
+                        self.logHandler(.verbose, "Failover: waiting for confirmation probe to '\(nextName)' (\(Int(probeAge))s/\(Int(self.settings.confirmationTimeout))s)")
+                    }
+                }
+            }
+            return
+        }
+
+        stopConfirmationProbe()
+        logHandler(.verbose, "Failover: tx without rx for \(Int(duration))s; confirming '\(nextName)' is reachable before switching")
+        adapter.startProbe(tunnelConfiguration: configurations[nextIndex]) { [weak self] (handle: Int32?, error: Error?) in
+            guard let self = self else { return }
+            self.workQueue.async {
+                guard let handle = handle else {
+                    self.logHandler(.error, "Failover: confirmation probe failed to start (\(String(describing: error))); switching without confirmation")
+                    self.failoverNow(duration: duration)
+                    return
+                }
+                self.confirmationProbeHandle = handle
+                self.confirmationProbeIndex = nextIndex
+                self.confirmationProbeStartedAt = Date()
+            }
+        }
+    }
+
+    /// Record that failover is being held back for this outage (once), and raise sensitivity.
+    private func noteSuppressed(duration: TimeInterval, reason: String) {
+        if suppressedSince == nil {
+            suppressedSince = Date()
+            registerFalseAlarm()
+            logHandler(.error, "Failover: holding on config #\(activeIndex): \(reason). The local link is the likely cause; traffic timeout now \(Int(effectiveTrafficTimeout))s")
+            delegate?.healthMonitor(self, didSuppressFailoverAt: activeIndex, txWithoutRxDuration: duration, reason: reason)
+        } else {
+            logHandler(.verbose, "Failover: still holding (\(reason))")
+        }
+    }
+
+    /// End the current outage bookkeeping. `recovered` means traffic came back on its own.
+    private func clearIncident(recovered: Bool) {
+        if let since = suppressedSince, recovered {
+            logHandler(.verbose, "Failover: link recovered after \(Int(Date().timeIntervalSince(since)))s without failing over")
+        }
+        suppressedSince = nil
+        stopConfirmationProbe()
+    }
+
+    private func registerFalseAlarm() {
+        falseAlarmCount = min(falseAlarmCount + 1, 4)
+        lastIncidentTime = Date()
+    }
+
+    /// A failback shortly after a failover means the switch was probably unnecessary.
+    private func noteFailbackTiming() {
+        if Date().timeIntervalSince(lastSwitchTime) < 2 * minimumHoldTime {
+            registerFalseAlarm()
+            logHandler(.verbose, "Failover: quick failback counted as a false alarm; traffic timeout now \(Int(effectiveTrafficTimeout))s")
+        }
+    }
+
+    private func stopConfirmationProbe() {
+        if let handle = confirmationProbeHandle {
+            adapter?.stopProbe(handle: handle)
+        }
+        confirmationProbeHandle = nil
+        confirmationProbeIndex = nil
+        confirmationProbeStartedAt = nil
     }
 
     // MARK: - Config Switching
@@ -344,6 +546,7 @@ public class ConnectionHealthMonitor {
                     self.lastTxBytes = 0
                     self.lastRxBytes = 0
                     self.txWithoutRxSince = nil
+                    self.clearIncident(recovered: false)
 
                     let name = config.name ?? "config #\(index)"
                     self.logHandler(.verbose, "Failover: switched from config #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
@@ -449,6 +652,7 @@ public class ConnectionHealthMonitor {
                                 adapter.update(tunnelConfiguration: self.configurations[0], excludedEndpoints: self.siblingEndpoints(forActiveIndex: 0)) { [weak self] (_: Error?) in
                                     guard let self = self else { return }
                                     self.workQueue.async {
+                                        self.noteFailbackTiming()
                                         self.activeIndex = 0
                                         self.lastSwitchTime = Date()
                                         self.consecutiveCycles = 0
@@ -461,6 +665,7 @@ public class ConnectionHealthMonitor {
                                     }
                                 }
                             } else {
+                                self.noteFailbackTiming()
                                 self.activeIndex = 0
                                 self.lastSwitchTime = Date()
                                 self.consecutiveCycles = 0
@@ -538,6 +743,7 @@ public class ConnectionHealthMonitor {
                     // Primary recovered!
                     let name = self.configurations[0].name ?? "config #0"
                     self.logHandler(.verbose, "Failover: primary '\(name)' recovered (handshake \(Int(handshakeAge))s ago). Staying on primary.")
+                    self.noteFailbackTiming()
                     self.activeIndex = 0
                     self.lastSwitchTime = Date()
                     self.consecutiveCycles = 0
@@ -619,26 +825,32 @@ public class ConnectionHealthMonitor {
     /// Called from evaluateHealth when the active connection is detected as unhealthy.
     /// Returns true if we initiated hot spare promotion (caller should not also switchToConfig).
     private func tryHotSpareFailover() -> Bool {
-        guard settings.hotSpare, let adapter = adapter,
-              let handle = hotSpareHandle, let targetIndex = hotSpareConfigIndex else {
+        guard settings.hotSpare, let handle = hotSpareHandle, let targetIndex = hotSpareConfigIndex else {
             return false
         }
 
-        logHandler(.verbose, "Failover: promoting hot spare for index \(targetIndex) — session preserved, no re-handshake")
-
         // Clear hot spare state so stopHotSpare doesn't kill it during promotion
-        let config = configurations[targetIndex]
         hotSpareHandle = nil
         hotSpareConfigIndex = nil
+        promoteProbeAsActive(handle: handle, index: targetIndex, label: "hot spare")
+        return true
+    }
 
-        // Promote: swaps null tun → real utun inside the probe device
+    /// Promote a probe (hot spare or confirmation probe) to become the active tunnel. The
+    /// probe's Noise session is preserved, so there is no re-handshake. Falls back to a config
+    /// swap if promotion fails.
+    private func promoteProbeAsActive(handle: Int32, index targetIndex: Int, label: String) {
+        guard let adapter = adapter else { return }
+        let config = configurations[targetIndex]
+        logHandler(.verbose, "Failover: promoting \(label) for index \(targetIndex) — session preserved, no re-handshake")
+
+        // Promote: swaps null tun → real utun inside the probe's device
         let siblings = siblingEndpoints(forActiveIndex: targetIndex)
         adapter.promoteProbe(probeHandle: handle, tunnelConfiguration: config, excludedEndpoints: siblings) { [weak self] (error: Error?) in
             guard let self = self else { return }
             self.workQueue.async {
                 if let error = error {
-                    let name = config.name ?? "config #\(targetIndex)"
-                    self.logHandler(.error, "Failover: hot spare promotion failed: \(error), falling back to config swap")
+                    self.logHandler(.error, "Failover: \(label) promotion failed: \(error), falling back to config swap")
                     // Fall back to regular config swap
                     self.switchToConfig(at: targetIndex)
                 } else {
@@ -650,9 +862,10 @@ public class ConnectionHealthMonitor {
                     self.lastTxBytes = 0
                     self.lastRxBytes = 0
                     self.txWithoutRxSince = nil
+                    self.clearIncident(recovered: false)
 
                     let name = config.name ?? "config #\(targetIndex)"
-                    self.logHandler(.verbose, "Failover: hot spare promoted from #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
+                    self.logHandler(.verbose, "Failover: \(label) promoted from #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
                     self.delegate?.healthMonitor(self, didSwitchToConfigAt: targetIndex)
 
                     // Start a new hot spare for the next target
@@ -660,8 +873,6 @@ public class ConnectionHealthMonitor {
                 }
             }
         }
-
-        return true
     }
 
     // MARK: - State Snapshot
@@ -681,6 +892,25 @@ public class ConnectionHealthMonitor {
             state["maxCyclesBeforeCooldown"] = self.maxCyclesBeforeCooldown
             state["cooldownDuration"] = self.cooldownDuration
             state["failbackTimerActive"] = self.failbackTimer != nil
+            state["effectiveTrafficTimeout"] = self.effectiveTrafficTimeout
+            state["falseAlarmCount"] = self.falseAlarmCount
+            state["pathSatisfied"] = self.pathSatisfied
+            if let since = self.suppressedSince {
+                state["suppressedSince"] = since.timeIntervalSince1970
+            }
+            if let handle = self.confirmationProbeHandle {
+                state["confirmationProbeHandle"] = Int(handle)
+                state["confirmationProbeIndex"] = self.confirmationProbeIndex ?? -1
+            }
+            let confirmationState: String
+            if self.suppressedSince != nil {
+                confirmationState = "suppressed"
+            } else if self.confirmationProbeHandle != nil {
+                confirmationState = "probing"
+            } else {
+                confirmationState = "idle"
+            }
+            state["confirmationState"] = confirmationState
             if let handle = self.failbackProbeHandle {
                 state["failbackProbeHandle"] = Int(handle)
             }
