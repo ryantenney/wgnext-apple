@@ -18,8 +18,9 @@ protocol TunnelGroupSpec {
     /// Build the providerConfiguration dictionary. Returns nil on failure.
     func buildProviderConfiguration(tunnelsManager: TunnelsManager, existing: [String: Any]?) -> [String: Any]?
 
-    /// Get the passwordReference from the appropriate source tunnel.
-    func passwordReference(from tunnelsManager: TunnelsManager) -> Data?
+    /// The wg-quick config of the tunnel whose settings back the group's own keychain entry
+    /// (primary for failover, outer for tunnel-in-tunnel).
+    func sourceConfigString(from tunnelsManager: TunnelsManager) -> String?
 }
 
 // MARK: - FailoverGroupSpec
@@ -76,12 +77,9 @@ struct FailoverGroupSpec: TunnelGroupSpec {
         return providerConfig
     }
 
-    func passwordReference(from tunnelsManager: TunnelsManager) -> Data? {
-        guard let primaryTunnel = tunnelsManager.tunnel(named: tunnelNames[0]),
-              let primaryProto = primaryTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else {
-            return nil
-        }
-        return primaryProto.passwordReference
+    func sourceConfigString(from tunnelsManager: TunnelsManager) -> String? {
+        guard let primaryName = tunnelNames.first else { return nil }
+        return tunnelsManager.tunnel(named: primaryName)?.tunnelConfiguration?.asWgQuickConfig()
     }
 }
 
@@ -125,12 +123,8 @@ struct TiTGroupSpec: TunnelGroupSpec {
         return providerConfig
     }
 
-    func passwordReference(from tunnelsManager: TunnelsManager) -> Data? {
-        guard let outerTunnel = tunnelsManager.tunnel(named: outerTunnelName),
-              let outerProto = outerTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else {
-            return nil
-        }
-        return outerProto.passwordReference
+    func sourceConfigString(from tunnelsManager: TunnelsManager) -> String? {
+        return tunnelsManager.tunnel(named: outerTunnelName)?.tunnelConfiguration?.asWgQuickConfig()
     }
 }
 
@@ -145,8 +139,11 @@ extension TunnelsManager {
             return
         }
 
-        guard let passwordRef = spec.passwordReference(from: self) else {
-            wg_log(.error, message: "\(spec.groupKind.displayName): source tunnel has no valid keychain reference")
+        // Groups own a private keychain copy of the source config so member edits or deletions
+        // can never invalidate the group's reference.
+        guard let sourceConfig = spec.sourceConfigString(from: self),
+              let passwordRef = Keychain.makeReference(containing: sourceConfig, called: spec.name) else {
+            wg_log(.error, message: "\(spec.groupKind.displayName): source tunnel has no readable configuration")
             completionHandler(.failure(TunnelsManagerError.tunnelNameEmpty))
             return
         }
@@ -243,14 +240,15 @@ extension TunnelsManager {
             tunnelProviderManager.localizedDescription = spec.name
         }
 
-        // Update passwordReference from spec
-        if let passwordRef = spec.passwordReference(from: self) {
-            (tunnelProviderManager.protocolConfiguration as? NETunnelProviderProtocol)?.passwordReference = passwordRef
-        }
-
         guard let proto = tunnelProviderManager.protocolConfiguration as? NETunnelProviderProtocol else {
             completionHandler(nil)
             return
+        }
+
+        // Refresh the group's own keychain copy of the source config
+        if let sourceConfig = spec.sourceConfigString(from: self),
+           let passwordRef = Keychain.makeReference(containing: sourceConfig, called: spec.name, previouslyReferencedBy: proto.passwordReference) {
+            proto.passwordReference = passwordRef
         }
 
         let existingConfig = proto.providerConfiguration
@@ -302,10 +300,7 @@ extension TunnelsManager {
             }
             self.groupListDelegate?.groupModified(kind: kind, at: self.groupTunnels(kind: kind).firstIndex(of: tunnel)!)
 
-            if tunnel.status == .active || tunnel.status == .activating || tunnel.status == .reasserting {
-                tunnel.status = .restarting
-                (tunnel.tunnelProvider.connection as? NETunnelProviderSession)?.stopTunnel()
-            }
+            self.applyConfigurationToRunningGroup(tunnel)
 
             if isActivatingOnDemand {
                 tunnelProviderManager.loadFromPreferences { error in
@@ -325,7 +320,13 @@ extension TunnelsManager {
 
     func removeGroup(kind: TunnelGroupKind, tunnel: TunnelContainer, completionHandler: @escaping (TunnelsManagerError?) -> Void) {
         let tunnelProviderManager = tunnel.tunnelProvider
-        // Note: we do NOT destroy the passwordReference because it belongs to the source tunnel
+        // The group owns its keychain copy (see addGroup); a reference still shared with a member
+        // (pre-migration) is left alone so the member keeps working.
+        if let proto = tunnelProviderManager.protocolConfiguration as? NETunnelProviderProtocol,
+           let ref = proto.passwordReference,
+           !tunnels.contains(where: { ($0.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.passwordReference == ref }) {
+            proto.destroyConfigurationReference()
+        }
         tunnelProviderManager.removeFromPreferences { [weak self] error in
             if let error = error {
                 wg_log(.error, message: "\(kind.displayName): failed to remove group manager: \(error)")
@@ -348,6 +349,80 @@ extension TunnelsManager {
             }
             OnDemandSuspensionStore.remove(tunnel.name)
             completionHandler(nil)
+        }
+    }
+
+    // MARK: - Live configuration reload
+
+    /// IPC message type that hands a running group its updated configuration (see
+    /// `PacketTunnelProvider.reloadGroupConfiguration`).
+    static let groupReloadMessageType: UInt8 = 6
+
+    /// Push the group's current providerConfiguration into its running extension so the change
+    /// takes effect without dropping the VPN. Falls back to a restart when the extension does not
+    /// answer or reports failure. No-op when the group is not running.
+    func applyConfigurationToRunningGroup(_ tunnel: TunnelContainer) {
+        guard tunnel.status == .active || tunnel.status == .activating || tunnel.status == .reasserting else { return }
+        reloadRunningGroupConfiguration(tunnel) { success in
+            DispatchQueue.main.async {
+                if success {
+                    wg_log(.info, message: "\(tunnel.name): running group reloaded its configuration in place")
+                    return
+                }
+                wg_log(.info, message: "\(tunnel.name): live reload unavailable, restarting the group")
+                guard tunnel.status == .active || tunnel.status == .activating || tunnel.status == .reasserting else { return }
+                tunnel.status = .restarting
+                (tunnel.tunnelProvider.connection as? NETunnelProviderSession)?.stopTunnel()
+            }
+        }
+    }
+
+    /// Send the group's stored configuration to the running extension. Completion is called on
+    /// an arbitrary queue with `true` only when the extension confirmed the reload.
+    func reloadRunningGroupConfiguration(_ tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
+        guard let kind = tunnel.groupKind,
+              let session = tunnel.tunnelProvider.connection as? NETunnelProviderSession,
+              let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
+              let providerConfig = proto.providerConfiguration else {
+            completionHandler(false)
+            return
+        }
+
+        var payload: [String: Any] = ["kind": kind.rawValue]
+        switch kind {
+        case .failover:
+            payload["configs"] = providerConfig["FailoverConfigs"] as? [String] ?? []
+            payload["names"] = providerConfig["FailoverConfigNames"] as? [String] ?? []
+            if let settingsData = providerConfig["FailoverSettings"] as? Data {
+                payload["settings"] = settingsData.base64EncodedString()
+            }
+        case .tunnelInTunnel:
+            payload["outer"] = providerConfig[TunnelInTunnelConfigKeys.outerConfig] as? String ?? ""
+            payload["outerName"] = providerConfig[TunnelInTunnelConfigKeys.outerName] as? String ?? ""
+            payload["inner"] = providerConfig[TunnelInTunnelConfigKeys.innerConfig] as? String ?? ""
+            payload["innerName"] = providerConfig[TunnelInTunnelConfigKeys.innerName] as? String ?? ""
+        }
+
+        guard let json = try? JSONSerialization.data(withJSONObject: payload) else {
+            completionHandler(false)
+            return
+        }
+        var message = Data([TunnelsManager.groupReloadMessageType])
+        message.append(json)
+
+        do {
+            try session.sendProviderMessage(message) { responseData in
+                guard let data = responseData,
+                      let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let success = result["success"] as? Bool else {
+                    completionHandler(false)
+                    return
+                }
+                completionHandler(success)
+            }
+        } catch {
+            wg_log(.error, message: "\(kind.displayName): failed to send configuration reload: \(error)")
+            completionHandler(false)
         }
     }
 

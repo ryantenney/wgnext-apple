@@ -62,19 +62,23 @@ extension TunnelsManager {
             providerConfig["FailoverConfigs"] = configs.map { $0.config }
             providerConfig["FailoverConfigNames"] = configs.map { $0.name }
 
-            // Update passwordReference if primary changed
-            if let primaryName = configNames.first,
-               let primaryTunnel = self.tunnel(named: primaryName),
-               let primaryProto = primaryTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-               let passwordRef = primaryProto.passwordReference {
+            // Refresh the group's own keychain copy of the primary config
+            if let primaryConfig = configs.first?.config,
+               let passwordRef = Keychain.makeReference(containing: primaryConfig, called: groupTunnel.name, previouslyReferencedBy: proto.passwordReference) {
                 proto.passwordReference = passwordRef
             }
 
             proto.providerConfiguration = providerConfig
-            groupTunnel.tunnelProvider.saveToPreferences { [weak self] _ in
-                if let self = self, let index = self.failoverGroupTunnels.firstIndex(of: groupTunnel) {
+            groupTunnel.tunnelProvider.saveToPreferences { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    wg_log(.error, message: "Failover: failed to save refreshed group '\(groupTunnel.name)': \(error)")
+                    return
+                }
+                if let index = self.failoverGroupTunnels.firstIndex(of: groupTunnel) {
                     self.groupListDelegate?.groupModified(kind: .failover, at: index)
                 }
+                self.applyConfigurationToRunningGroup(groupTunnel)
             }
         }
     }

@@ -65,18 +65,23 @@ extension TunnelsManager {
                 providerConfig[TunnelInTunnelConfigKeys.innerName] = innerName
             }
 
-            // Update passwordReference from outer tunnel
-            if let outerTunnel = self.tunnel(named: outerName),
-               let outerProto = outerTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-               let passwordRef = outerProto.passwordReference {
+            // Refresh the group's own keychain copy of the outer config
+            if let outerConfig = providerConfig[TunnelInTunnelConfigKeys.outerConfig] as? String,
+               let passwordRef = Keychain.makeReference(containing: outerConfig, called: groupTunnel.name, previouslyReferencedBy: proto.passwordReference) {
                 proto.passwordReference = passwordRef
             }
 
             proto.providerConfiguration = providerConfig
-            groupTunnel.tunnelProvider.saveToPreferences { [weak self] _ in
-                if let self = self, let index = self.titGroupTunnels.firstIndex(of: groupTunnel) {
+            groupTunnel.tunnelProvider.saveToPreferences { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    wg_log(.error, message: "TiT: failed to save refreshed group '\(groupTunnel.name)': \(error)")
+                    return
+                }
+                if let index = self.titGroupTunnels.firstIndex(of: groupTunnel) {
                     self.groupListDelegate?.groupModified(kind: .tunnelInTunnel, at: index)
                 }
+                self.applyConfigurationToRunningGroup(groupTunnel)
             }
         }
     }
