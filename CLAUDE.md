@@ -173,6 +173,11 @@ Build with `FAILOVER_TESTING` flag (`fastlane ios device_failover`) to get Force
 - Network Extension features require a real device with proper provisioning
 - No automated test suite in the repository
 
+### Compile Checks Without a Mac
+- `scripts/linux-swift/typecheck.sh` runs on a Linux Swift toolchain: `swiftc -parse` over every Swift file per platform, then a real `-typecheck` of the platform-independent core (configuration model, wg-quick parser, `FailoverSettings`, `ConnectionHealthMonitor`, `UapiRuntimeSnapshot`) against the stub Network module in `scripts/linux-swift/Network.swift`. Anything importing NetworkExtension, UIKit, AppKit, os.log, or Security is out of its reach.
+- `.claude/hooks/session-start.sh` installs that toolchain in Claude Code on the web sessions (registered in `.claude/settings.json`), so run the script after touching Swift.
+- `.github/workflows/build.yml` does the full Xcode build of both apps (signing disabled) plus SwiftLint on a macOS runner. It runs for pushes and PRs to `main` and can be started for any branch with `workflow_dispatch`.
+
 ## Important Notes
 
 - Only one VPN tunnel can be active at a time (iOS/macOS system constraint enforced by `TunnelsManager`)
